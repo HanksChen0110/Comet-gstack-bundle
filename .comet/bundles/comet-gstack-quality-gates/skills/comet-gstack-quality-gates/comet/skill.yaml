@@ -1,0 +1,77 @@
+apiVersion: comet/v1alpha1
+kind: Skill
+metadata:
+  name: comet-gstack-quality-gates
+  version: 1.0.0
+  description: Use when the user wants the comet-gstack-quality-gates managed
+    workflow for 为 Comet Classic 增加 gstack 质量门，同时保留原有 comet-five-phase-overlay
+    状态机、所有内置 Workflow Node 及其 implementation。所有质量能力仅通过 Required Skill Call、挂载到具体
+    Node 的自定义 Output Schema，以及由这些 schema 驱动的 guarded 或 handoff-guarded Guard
+    实现。verify 必须严格执行 verificati…, explicitly invokes
+    /comet-gstack-quality-gates, or persisted workflow state identifies one
+    unambiguous active run. Route through this entry Skill; do not invoke its
+    internal Node Skills directly.
+goal:
+  statement: 在不覆盖 Comet Classic control Node 或其他内置 Node implementation 的前提下，为
+    design、execute、subagent-execute、review、verify、archive 增加可审计、可失效、可回退的 gstack
+    强制质量门。
+  inputs: []
+  outputs:
+    - name: result
+      description: Generated workflow result
+  success:
+    - The generated workflow completes according to its workflow protocol
+orchestration:
+  mode: deterministic
+  entry: node-1-open
+  steps:
+    - id: node-1-open
+      action:
+        type: invoke_skill
+        ref: comet-gstack-quality-gates-open
+      next: node-2-design
+    - id: node-2-design
+      action:
+        type: invoke_skill
+        ref: comet-gstack-quality-gates-design
+      next: node-3-plan
+    - id: node-3-plan
+      action:
+        type: invoke_skill
+        ref: comet-gstack-quality-gates-plan
+      next: node-4-execute
+    - id: node-4-execute
+      action:
+        type: invoke_skill
+        ref: comet-gstack-quality-gates-execute
+      next: node-5-subagent-execute
+    - id: node-5-subagent-execute
+      action:
+        type: invoke_skill
+        ref: comet-gstack-quality-gates-subagent-execute
+      next: node-6-review
+    - id: node-6-review
+      action:
+        type: invoke_skill
+        ref: comet-gstack-quality-gates-review
+      next: node-7-verify
+    - id: node-7-verify
+      action:
+        type: invoke_skill
+        ref: comet-gstack-quality-gates-verify
+      next: node-8-archive
+    - id: node-8-archive
+      action:
+        type: invoke_skill
+        ref: comet-gstack-quality-gates-archive
+skills:
+  - id: comet-gstack-quality-gates-open
+  - id: comet-gstack-quality-gates-design
+  - id: comet-gstack-quality-gates-plan
+  - id: comet-gstack-quality-gates-execute
+  - id: comet-gstack-quality-gates-subagent-execute
+  - id: comet-gstack-quality-gates-review
+  - id: comet-gstack-quality-gates-verify
+  - id: comet-gstack-quality-gates-archive
+agents: []
+tools: []

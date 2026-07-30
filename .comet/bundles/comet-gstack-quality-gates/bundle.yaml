@@ -1,0 +1,105 @@
+apiVersion: comet/v1alpha1
+kind: SkillBundle
+metadata:
+  name: comet-gstack-quality-gates
+  version: 1.0.0
+  description: 为 Comet Classic 增加 gstack 质量门，同时保留原有 comet-five-phase-overlay
+    状态机、所有内置 Workflow Node 及其 implementation。所有质量能力仅通过 Required Skill Call、挂载到具体
+    Node 的自定义 Output Schema，以及由这些 schema 驱动的 guarded 或 handoff-guarded Guard
+    实现。verify 必须严格执行 verification-gate → qa；两项证据必须绑定当前代码状态和当前 draft。qa
+    一旦修改代码、产生新提交或发现待修复问题，旧 verify 证据立即失效，流程必须回退 execute → review，修复和审查后重新执行
+    verification-gate → qa。health 必须在真正 archive 前运行并记录复合评分与跨 change 趋势证据。
+  defaultLocale: zh
+  locales:
+    - zh
+skills:
+  - id: comet-gstack-quality-gates
+    path: skills/comet-gstack-quality-gates
+    visibility: entry
+  - id: comet-gstack-quality-gates-open
+    path: skills/comet-gstack-quality-gates-open
+    visibility: internal
+  - id: comet-gstack-quality-gates-design
+    path: skills/comet-gstack-quality-gates-design
+    visibility: internal
+  - id: comet-gstack-quality-gates-plan
+    path: skills/comet-gstack-quality-gates-plan
+    visibility: internal
+  - id: comet-gstack-quality-gates-execute
+    path: skills/comet-gstack-quality-gates-execute
+    visibility: internal
+  - id: comet-gstack-quality-gates-subagent-execute
+    path: skills/comet-gstack-quality-gates-subagent-execute
+    visibility: internal
+  - id: comet-gstack-quality-gates-review
+    path: skills/comet-gstack-quality-gates-review
+    visibility: internal
+  - id: comet-gstack-quality-gates-verify
+    path: skills/comet-gstack-quality-gates-verify
+    visibility: internal
+  - id: comet-gstack-quality-gates-archive
+    path: skills/comet-gstack-quality-gates-archive
+    visibility: internal
+resources:
+  rules:
+    - id: comet-gstack-quality-gates-orchestration
+      path: rules/comet-gstack-quality-gates-orchestration.md
+      mode: always
+      required: true
+  hooks:
+    - id: comet-gstack-quality-gates-before-write-guard
+      path: hooks/comet-gstack-quality-gates-before-write-guard.yaml
+    - id: comet-gstack-quality-gates-before-tool-guard
+      path: hooks/comet-gstack-quality-gates-before-tool-guard.yaml
+  references:
+    - skills/comet-gstack-quality-gates/reference/resolved-skills.json
+    - skills/comet-gstack-quality-gates/reference/workflow-protocol.json
+    - skills/comet-gstack-quality-gates/reference/decision-points.md
+    - skills/comet-gstack-quality-gates/reference/recovery.md
+    - skills/comet-gstack-quality-gates/reference/authoring-lanes.json
+    - skills/comet-gstack-quality-gates/reference/skill-review.md
+    - skills/comet-gstack-quality-gates/reference/composition-report.md
+    - skills/comet-gstack-quality-gates/reference/subagents/script-author.md
+  scripts:
+    - id: comet-plan
+      path: skills/comet-gstack-quality-gates/scripts/comet-plan.mjs
+      sideEffect: write
+      runtime: node
+    - id: comet-check
+      path: skills/comet-gstack-quality-gates/scripts/comet-check.mjs
+      sideEffect: read
+      runtime: node
+    - id: comet-hook-guard
+      path: skills/comet-gstack-quality-gates/scripts/comet-hook-guard.mjs
+      sideEffect: read
+      runtime: node
+    - id: workflow-state
+      path: skills/comet-gstack-quality-gates/scripts/workflow-state.mjs
+      sideEffect: write
+      runtime: node
+    - id: workflow-guard
+      path: skills/comet-gstack-quality-gates/scripts/workflow-guard.mjs
+      sideEffect: read
+      runtime: node
+    - id: workflow-handoff
+      path: skills/comet-gstack-quality-gates/scripts/workflow-handoff.mjs
+      sideEffect: read
+      runtime: node
+  assets: []
+  agents:
+    - id: comet-any-script-author
+      path: skills/comet-gstack-quality-gates/agents/claude/comet-any-script-author.md
+      platform: claude
+      required: true
+platforms:
+  requires:
+    - skills
+    - scripts
+    - rules
+    - hooks
+    - references
+    - agents
+  optional: []
+  overrides: []
+engine:
+  enabled: false

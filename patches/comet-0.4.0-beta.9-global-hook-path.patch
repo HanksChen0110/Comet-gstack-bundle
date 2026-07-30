@@ -1,0 +1,18 @@
+diff --git a/dist/domains/bundle/platform.js b/dist/domains/bundle/platform.js
+--- a/dist/domains/bundle/platform.js
++++ b/dist/domains/bundle/platform.js
+@@ -99,9 +99,11 @@ export async function compileBundleForPlatform(ir, target, options) {
+         const installedScript = hookScript
+             ? skillResourceDestination(ir, target, hookScript.path)
+             : null;
+-        const commandScript = installedScript
+-            ? path.relative(target.layout.baseDir, installedScript).replaceAll('\\', '/')
+-            : undefined;
++        const commandScript = installedScript
++            ? options.scope === 'global'
++                ? installedScript
++                : path.relative(target.layout.baseDir, installedScript).replaceAll('\\', '/')
++            : undefined;
+         const planned = planBundleHook(target, hook, ir.scripts, ir.bundle.name, installedScript ?? undefined, commandScript);
+         if (planned) {
+             report.files.push(...planned.files);

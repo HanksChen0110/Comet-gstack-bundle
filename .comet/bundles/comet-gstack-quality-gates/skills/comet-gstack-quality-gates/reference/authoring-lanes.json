@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "protocolHash": "2a087c6a7aae6b8ae6e988d1ef992001bcf9bc601f6ecbe3bdfde816bfd93ca2",
+  "lanes": [
+    "workflow-entry",
+    "skill-core",
+    "script-contract",
+    "platform-agent",
+    "reference",
+    "eval",
+    "skill-review"
+  ],
+  "review": {
+    "passed": true,
+    "evidenceSource": "llm-multivote",
+    "voters": 3,
+    "lenses": [
+      "contract-fit",
+      "usability",
+      "evidence-trace",
+      "self-consistency"
+    ],
+    "rounds": 2,
+    "blockingFindings": [],
+    "warnings": [
+      "当前 receipt 能证明结构化 report、hash、artifact、顺序和 Guard 校验成立，但宿主没有提供可签名的 Skill 调用证明，不能把会话中的真实调用做成密码学证明。",
+      "sealed inventory 能阻止登记后缩减、重复和错配，但首次 inventory 是否覆盖全部真实实现段仍依赖 workflow review 与实现者声明。",
+      "语义 Guard、remediation postcondition、archive transaction 与负向 eval 能力是全局 npm 包的本地补丁；npm reinstall、update 或 repair 可能覆盖。"
+    ]
+  }
+}

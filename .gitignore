@@ -1,0 +1,15 @@
+node_modules/
+.comet/bundle-authoring/*
+!.comet/bundle-authoring/comet-gstack-quality-gates.json
+.comet/bundle-drafts/*
+!.comet/bundle-drafts/comet-gstack-quality-gates/
+.comet/bundle-drafts/comet-gstack-quality-gates/*
+!.comet/bundle-drafts/comet-gstack-quality-gates/bundle.yaml
+!.comet/bundle-drafts/comet-gstack-quality-gates/hooks/
+!.comet/bundle-drafts/comet-gstack-quality-gates/rules/
+!.comet/bundle-drafts/comet-gstack-quality-gates/skills/
+.comet/eval-results/
+.comet/workflow-evidence/
+*.log
+Thumbs.db
+.DS_Store

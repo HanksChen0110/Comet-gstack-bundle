@@ -1,0 +1,17 @@
+diff --git a/scripts/comet-hook-guard.mjs b/scripts/comet-hook-guard.mjs
+--- a/scripts/comet-hook-guard.mjs
++++ b/scripts/comet-hook-guard.mjs
+@@ -236,7 +236,13 @@ async function main() {
+   if (nodes.length === 0) {
+     throw new Error('workflow protocol has no enabled nodes');
+   }
+   if (isCometOverlay(protocol)) {
++    const activeChanges = await activeCometChanges();
++    if (activeChanges.length === 0) {
++      console.log('workflow-hook-guard-skipped');
++      console.log('REASON: no active Comet change');
++      return;
++    }
+     const change = await resolveCometOverlayChange();
+     const current = validatedOverlayNode();
+     if (!current || !nodes.some((node) => node.id === current)) {

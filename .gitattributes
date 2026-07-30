@@ -1,0 +1,7 @@
+* text=auto
+
+/.comet/bundles/** text eol=lf -whitespace
+/.comet/bundle-drafts/** text eol=lf -whitespace
+/.comet/bundle-authoring/** text eol=lf
+/*.md text eol=lf
+/patches/** text eol=lf

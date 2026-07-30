@@ -1,0 +1,1536 @@
+{
+  "schemaVersion": 1,
+  "kind": "comet-five-phase-overlay",
+  "name": "comet-gstack-quality-gates",
+  "goal": "在不覆盖 Comet Classic control Node 或其他内置 Node implementation 的前提下，为 design、execute、subagent-execute、review、verify、archive 增加可审计、可失效、可回退的 gstack 强制质量门。",
+  "nodes": [
+    {
+      "id": "open",
+      "label": "Open",
+      "kind": "control",
+      "responsibility": "Intake the user request, choose the change shape, and initialize Comet state.",
+      "implementation": {
+        "skill": "comet-open",
+        "operation": "default",
+        "scope": "main",
+        "enforcement": "guarded"
+      },
+      "operations": [
+        "require",
+        "augment"
+      ],
+      "outputSchemas": [
+        "comet.intake.v1"
+      ],
+      "guardrails": [
+        {
+          "id": "comet-state-created",
+          "label": ".comet.yaml exists",
+          "validation": "state-transition"
+        }
+      ],
+      "requiredSkillCalls": [],
+      "augmentations": [],
+      "satisfies": [],
+      "disabled": false
+    },
+    {
+      "id": "design",
+      "label": "Design",
+      "kind": "producer",
+      "responsibility": "Turn the confirmed request into design artifacts and OpenSpec delta context.",
+      "implementation": {
+        "skill": "comet-design",
+        "operation": "default",
+        "scope": "main",
+        "enforcement": "guarded"
+      },
+      "operations": [
+        "require",
+        "augment",
+        "override"
+      ],
+      "outputSchemas": [
+        "comet.design.v1",
+        "gstack.design.autoplan-review.v1"
+      ],
+      "guardrails": [
+        {
+          "id": "design-artifacts",
+          "label": "Design artifacts exist",
+          "validation": "artifact-structured"
+        }
+      ],
+      "requiredSkillCalls": [
+        {
+          "skill": "autoplan",
+          "operation": "require",
+          "scope": "main",
+          "enforcement": "guarded",
+          "reason": "在设计阶段完成 CEO、engineering、design、DX 四视角审查，并记录当前 change 与 draft 的审查证据。"
+        }
+      ],
+      "augmentations": [],
+      "satisfies": [],
+      "disabled": false
+    },
+    {
+      "id": "plan",
+      "label": "Plan",
+      "kind": "producer",
+      "responsibility": "Create the executable implementation plan and task contract.",
+      "implementation": {
+        "skill": "comet-build",
+        "operation": "default",
+        "scope": "main",
+        "enforcement": "guarded"
+      },
+      "operations": [
+        "require",
+        "augment",
+        "override"
+      ],
+      "outputSchemas": [
+        "comet.plan.v1"
+      ],
+      "guardrails": [
+        {
+          "id": "plan-artifacts",
+          "label": "Plan artifacts exist",
+          "validation": "artifact-structured"
+        }
+      ],
+      "requiredSkillCalls": [],
+      "augmentations": [],
+      "satisfies": [],
+      "disabled": false
+    },
+    {
+      "id": "execute",
+      "label": "Execute",
+      "kind": "control",
+      "responsibility": "Apply the implementation plan through direct coordinator execution.",
+      "implementation": {
+        "skill": "comet-build",
+        "operation": "default",
+        "scope": "main",
+        "enforcement": "guarded"
+      },
+      "operations": [
+        "require",
+        "augment"
+      ],
+      "outputSchemas": [
+        "comet.execution-evidence.v1",
+        "gstack.execute.segment-review.v1"
+      ],
+      "guardrails": [
+        {
+          "id": "build-complete",
+          "label": "Build evidence recorded",
+          "validation": "semantic"
+        }
+      ],
+      "requiredSkillCalls": [
+        {
+          "skill": "review",
+          "operation": "require",
+          "scope": "review",
+          "enforcement": "guarded",
+          "reason": "每个实现段完成后运行 review，记录对应实现段、代码状态和阻断项处理证据。"
+        }
+      ],
+      "augmentations": [],
+      "satisfies": [],
+      "disabled": false
+    },
+    {
+      "id": "subagent-execute",
+      "label": "Subagent Execute",
+      "kind": "handoff",
+      "responsibility": "Delegate implementation work and require auditable returned evidence.",
+      "implementation": {
+        "skill": "subagent-driven-development",
+        "operation": "default",
+        "scope": "handoff",
+        "enforcement": "handoff-guarded"
+      },
+      "operations": [
+        "require",
+        "augment"
+      ],
+      "outputSchemas": [
+        "comet.handoff.v1",
+        "gstack.subagent.handoff-review.v1"
+      ],
+      "guardrails": [
+        {
+          "id": "handoff-evidence",
+          "label": "Handoff evidence recorded",
+          "validation": "evidence-only"
+        }
+      ],
+      "requiredSkillCalls": [
+        {
+          "skill": "review",
+          "operation": "require",
+          "scope": "handoff",
+          "enforcement": "handoff-guarded",
+          "reason": "子代理必须在 handoff 中加载 review，并回传 handoff review 与子代理执行证据；缺失时不得接受 handoff。"
+        }
+      ],
+      "augmentations": [],
+      "satisfies": [],
+      "disabled": false
+    },
+    {
+      "id": "review",
+      "label": "Review",
+      "kind": "guardrail",
+      "responsibility": "Inspect the implementation with review Skills before verification.",
+      "optional": true,
+      "implementation": {
+        "skill": "requesting-code-review",
+        "operation": "default",
+        "scope": "review",
+        "enforcement": "guarded"
+      },
+      "operations": [
+        "require",
+        "augment",
+        "disable"
+      ],
+      "outputSchemas": [
+        "comet.review.v1",
+        "gstack.review.codex-adversarial.v1"
+      ],
+      "guardrails": [
+        {
+          "id": "review-evidence",
+          "label": "Review evidence recorded",
+          "validation": "evidence-only"
+        }
+      ],
+      "requiredSkillCalls": [
+        {
+          "skill": "codex",
+          "operation": "require",
+          "scope": "review",
+          "enforcement": "guarded",
+          "reason": "在正式验证前执行 Codex 对抗审查，记录当前代码状态、draft、发现项与处置结果。"
+        }
+      ],
+      "augmentations": [],
+      "satisfies": [],
+      "disabled": false
+    },
+    {
+      "id": "verify",
+      "label": "Verify",
+      "kind": "control",
+      "responsibility": "Run verification, reconcile branch state, and decide whether completion is valid.",
+      "implementation": {
+        "skill": "comet-verify",
+        "operation": "default",
+        "scope": "main",
+        "enforcement": "guarded"
+      },
+      "operations": [
+        "require",
+        "augment"
+      ],
+      "outputSchemas": [
+        "comet.verify.v1",
+        "gstack.verify.ordered-quality-gates.v1"
+      ],
+      "guardrails": [
+        {
+          "id": "verify-result",
+          "label": "Verification result recorded",
+          "validation": "evidence-only"
+        }
+      ],
+      "requiredSkillCalls": [
+        {
+          "skill": "verification-gate",
+          "operation": "require",
+          "scope": "main",
+          "enforcement": "guarded",
+          "reason": "必须先对当前代码状态和当前 draft 运行 verification-gate 并通过，记录可验证证据。"
+        },
+        {
+          "skill": "qa",
+          "operation": "require",
+          "scope": "main",
+          "enforcement": "guarded",
+          "reason": "仅在 verification-gate 通过并记录证据后运行；必须记录调用顺序、代码状态、draft、是否修改代码、是否产生提交及是否发现待修复问题。"
+        }
+      ],
+      "augmentations": [],
+      "satisfies": [],
+      "disabled": false
+    },
+    {
+      "id": "archive",
+      "label": "Archive",
+      "kind": "control",
+      "responsibility": "Archive the OpenSpec change and sync completed deltas back to the main specs.",
+      "implementation": {
+        "skill": "comet-archive",
+        "operation": "default",
+        "scope": "main",
+        "enforcement": "guarded"
+      },
+      "operations": [
+        "require",
+        "augment"
+      ],
+      "outputSchemas": [
+        "comet.archive.v1",
+        "gstack.archive.health-score.v1"
+      ],
+      "guardrails": [
+        {
+          "id": "archive-state",
+          "label": "Archive state recorded",
+          "validation": "state-transition"
+        }
+      ],
+      "requiredSkillCalls": [
+        {
+          "skill": "health",
+          "operation": "require",
+          "scope": "main",
+          "enforcement": "guarded",
+          "reason": "必须在真正执行 archive 前运行，记录当前代码状态的复合评分、分项结果和跨 change 趋势证据。"
+        }
+      ],
+      "augmentations": [],
+      "satisfies": [],
+      "disabled": false
+    }
+  ],
+  "edges": [
+    {
+      "from": "open",
+      "to": "design",
+      "condition": "success"
+    },
+    {
+      "from": "open",
+      "to": "open",
+      "condition": "failure"
+    },
+    {
+      "from": "open",
+      "to": "open",
+      "condition": "pause"
+    },
+    {
+      "from": "design",
+      "to": "plan",
+      "condition": "success"
+    },
+    {
+      "from": "design",
+      "to": "design",
+      "condition": "failure"
+    },
+    {
+      "from": "design",
+      "to": "design",
+      "condition": "pause"
+    },
+    {
+      "from": "plan",
+      "to": "execute",
+      "condition": "success"
+    },
+    {
+      "from": "plan",
+      "to": "plan",
+      "condition": "failure"
+    },
+    {
+      "from": "plan",
+      "to": "plan",
+      "condition": "pause"
+    },
+    {
+      "from": "execute",
+      "to": "subagent-execute",
+      "condition": "success"
+    },
+    {
+      "from": "execute",
+      "to": "execute",
+      "condition": "failure"
+    },
+    {
+      "from": "execute",
+      "to": "execute",
+      "condition": "pause"
+    },
+    {
+      "from": "subagent-execute",
+      "to": "review",
+      "condition": "success"
+    },
+    {
+      "from": "subagent-execute",
+      "to": "subagent-execute",
+      "condition": "failure"
+    },
+    {
+      "from": "subagent-execute",
+      "to": "subagent-execute",
+      "condition": "pause"
+    },
+    {
+      "from": "review",
+      "to": "verify",
+      "condition": "success"
+    },
+    {
+      "from": "review",
+      "to": "review",
+      "condition": "failure"
+    },
+    {
+      "from": "review",
+      "to": "review",
+      "condition": "pause"
+    },
+    {
+      "from": "verify",
+      "to": "archive",
+      "condition": "success"
+    },
+    {
+      "from": "verify",
+      "to": "verify",
+      "condition": "failure"
+    },
+    {
+      "from": "verify",
+      "to": "verify",
+      "condition": "pause"
+    },
+    {
+      "from": "archive",
+      "to": null,
+      "condition": "success"
+    },
+    {
+      "from": "archive",
+      "to": "archive",
+      "condition": "failure"
+    },
+    {
+      "from": "archive",
+      "to": "archive",
+      "condition": "pause"
+    }
+  ],
+  "outputSchemas": [
+    {
+      "id": "comet.intake.v1",
+      "description": "Comet change intake and initial state.",
+      "artifacts": [
+        {
+          "id": "comet-state",
+          "kind": "state",
+          "required": true,
+          "paths": [
+            "openspec/changes/*/.comet.yaml"
+          ],
+          "validations": [
+            "state-transition"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "intake-summary",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "comet.design.v1",
+      "description": "Comet design artifacts and OpenSpec delta context.",
+      "artifacts": [
+        {
+          "id": "design-doc",
+          "kind": "file",
+          "required": true,
+          "paths": [
+            "docs/superpowers/specs/*.md"
+          ],
+          "validations": [
+            "artifact-exists",
+            "artifact-structured"
+          ]
+        },
+        {
+          "id": "delta-spec",
+          "kind": "file",
+          "required": true,
+          "paths": [
+            "openspec/changes/*/specs/*/spec.md"
+          ],
+          "validations": [
+            "artifact-exists",
+            "artifact-structured"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "design-summary",
+          "required": true
+        },
+        {
+          "id": "user-confirmation",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "comet.plan.v1",
+      "description": "Comet executable implementation plan.",
+      "artifacts": [
+        {
+          "id": "implementation-plan",
+          "kind": "file",
+          "required": true,
+          "paths": [
+            "docs/superpowers/plans/*.md"
+          ],
+          "validations": [
+            "artifact-exists",
+            "artifact-structured"
+          ]
+        },
+        {
+          "id": "openspec-tasks",
+          "kind": "file",
+          "required": false,
+          "paths": [
+            "openspec/changes/*/tasks.md"
+          ],
+          "validations": [
+            "artifact-exists",
+            "artifact-structured"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "producer-summary",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "comet.execution-evidence.v1",
+      "description": "Comet build execution evidence and task completion.",
+      "artifacts": [
+        {
+          "id": "task-state",
+          "kind": "file",
+          "required": true,
+          "paths": [
+            "openspec/changes/*/tasks.md"
+          ],
+          "validations": [
+            "artifact-structured",
+            "semantic"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "implementation-summary",
+          "required": true
+        },
+        {
+          "id": "test-evidence",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "comet.handoff.v1",
+      "description": "Subagent handoff request and returned evidence.",
+      "artifacts": [],
+      "evidence": [
+        {
+          "id": "handoff-request",
+          "required": true
+        },
+        {
+          "id": "handoff-result",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "comet.review.v1",
+      "description": "Review or whitebox rule report.",
+      "artifacts": [],
+      "evidence": [
+        {
+          "id": "review-summary",
+          "required": true
+        },
+        {
+          "id": "review-blockers",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "comet.verify.v1",
+      "description": "Comet verification evidence and branch handling.",
+      "artifacts": [],
+      "evidence": [
+        {
+          "id": "verification-commands",
+          "required": true
+        },
+        {
+          "id": "verification-result",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "comet.archive.v1",
+      "description": "OpenSpec archive and delta sync result.",
+      "artifacts": [],
+      "evidence": [
+        {
+          "id": "archive-summary",
+          "required": true
+        },
+        {
+          "id": "archived-state",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "gstack.design.autoplan-review.v1",
+      "description": "Autoplan 四视角设计审查证据。Guard 阻断条件：未真实运行 autoplan、任一 CEO/engineering/design/DX 视角缺失、证据不属于当前 change 或当前 draft、存在未处置阻断项。失败后停留或回退到 design。",
+      "artifacts": [
+        {
+          "id": "autoplan-review-report",
+          "kind": "report",
+          "required": true,
+          "paths": [
+            "openspec/changes/*/evidence/gstack/design-autoplan.json"
+          ],
+          "validations": [
+            "artifact-exists",
+            "artifact-structured",
+            "semantic"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "autoplan-run",
+          "required": true
+        },
+        {
+          "id": "ceo-review",
+          "required": true
+        },
+        {
+          "id": "engineering-review",
+          "required": true
+        },
+        {
+          "id": "design-review",
+          "required": true
+        },
+        {
+          "id": "dx-review",
+          "required": true
+        },
+        {
+          "id": "design-draft-hash",
+          "required": true
+        },
+        {
+          "id": "design-blockers-resolved",
+          "required": true
+        }
+      ],
+      "semanticRules": [
+        {
+          "id": "autoplan-must-run",
+          "operator": "equals",
+          "field": "autoplan-run",
+          "value": true
+        },
+        {
+          "id": "design-must-use-current-draft",
+          "operator": "matches-protocol",
+          "fields": [
+            "design-draft-hash"
+          ]
+        },
+        {
+          "id": "design-blockers-must-be-resolved",
+          "operator": "equals",
+          "field": "design-blockers-resolved",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "gstack.execute.segment-review.v1",
+      "description": "每个实现段的 review 证据。Guard 阻断条件：任一已完成实现段没有对应 review、review 证据的代码状态不匹配、Critical/Important 阻断项未处置。失败后回到 execute 修复并重新 review。",
+      "artifacts": [
+        {
+          "id": "segment-review-reports",
+          "kind": "report",
+          "required": true,
+          "paths": [
+            "openspec/changes/*/evidence/gstack/execute-review-*.json"
+          ],
+          "validations": [
+            "artifact-exists",
+            "artifact-structured",
+            "semantic"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "implementation-segment-index",
+          "required": true
+        },
+        {
+          "id": "review-per-segment",
+          "required": true
+        },
+        {
+          "id": "segment-code-state-hash",
+          "required": true
+        },
+        {
+          "id": "segment-review-blockers-resolved",
+          "required": true
+        }
+      ],
+      "semanticRules": [
+        {
+          "id": "every-segment-must-be-reviewed",
+          "operator": "equals",
+          "field": "review-per-segment",
+          "value": true
+        },
+        {
+          "id": "segment-review-must-match-current-code",
+          "operator": "matches-current-code",
+          "fields": [
+            "segment-code-state-hash"
+          ]
+        },
+        {
+          "id": "segment-review-blockers-must-be-resolved",
+          "operator": "equals",
+          "field": "segment-review-blockers-resolved",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "gstack.subagent.handoff-review.v1",
+      "description": "子代理 handoff review 与回传证据。Guard 阻断条件：handoff 未加载 review、缺少 review 结果、缺少子代理回传、回传代码状态不匹配或阻断项未处置。失败后回到 subagent-execute，拒绝接受该 handoff。",
+      "artifacts": [
+        {
+          "id": "subagent-handoff-review-reports",
+          "kind": "report",
+          "required": true,
+          "paths": [
+            "openspec/changes/*/evidence/gstack/subagent-handoff-*.json"
+          ],
+          "validations": [
+            "artifact-exists",
+            "artifact-structured",
+            "semantic"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "handoff-review-loaded",
+          "required": true
+        },
+        {
+          "id": "handoff-review-result",
+          "required": true
+        },
+        {
+          "id": "subagent-returned-evidence",
+          "required": true
+        },
+        {
+          "id": "handoff-code-state-hash",
+          "required": true
+        },
+        {
+          "id": "handoff-review-blockers-resolved",
+          "required": true
+        }
+      ],
+      "semanticRules": [
+        {
+          "id": "handoff-must-load-review",
+          "operator": "equals",
+          "field": "handoff-review-loaded",
+          "value": true
+        },
+        {
+          "id": "handoff-review-must-pass",
+          "operator": "equals",
+          "field": "handoff-review-result",
+          "value": "pass"
+        },
+        {
+          "id": "subagent-must-return-evidence",
+          "operator": "equals",
+          "field": "subagent-returned-evidence",
+          "value": true
+        },
+        {
+          "id": "handoff-must-match-current-code",
+          "operator": "matches-current-code",
+          "fields": [
+            "handoff-code-state-hash"
+          ]
+        },
+        {
+          "id": "handoff-blockers-must-be-resolved",
+          "operator": "equals",
+          "field": "handoff-review-blockers-resolved",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "gstack.review.codex-adversarial.v1",
+      "description": "Codex 对抗审查证据。Guard 阻断条件：未真实运行 codex review/challenge、证据不是当前代码状态或当前 draft、存在未处置阻断发现。失败后回到 execute 修复，再重新进入 review。",
+      "artifacts": [
+        {
+          "id": "codex-adversarial-report",
+          "kind": "report",
+          "required": true,
+          "paths": [
+            "openspec/changes/*/evidence/gstack/review-codex.json"
+          ],
+          "validations": [
+            "artifact-exists",
+            "artifact-structured",
+            "semantic"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "codex-review-run",
+          "required": true
+        },
+        {
+          "id": "codex-adversarial-result",
+          "required": true
+        },
+        {
+          "id": "codex-code-state-hash",
+          "required": true
+        },
+        {
+          "id": "codex-draft-hash",
+          "required": true
+        },
+        {
+          "id": "codex-blockers-resolved",
+          "required": true
+        }
+      ],
+      "semanticRules": [
+        {
+          "id": "codex-review-must-run",
+          "operator": "equals",
+          "field": "codex-review-run",
+          "value": true,
+          "remediation": "review-quality-blocked"
+        },
+        {
+          "id": "codex-review-must-match-current-code",
+          "operator": "matches-current-code",
+          "fields": [
+            "codex-code-state-hash"
+          ],
+          "remediation": "review-quality-blocked"
+        },
+        {
+          "id": "codex-review-must-match-current-draft",
+          "operator": "matches-protocol",
+          "fields": [
+            "codex-draft-hash"
+          ],
+          "remediation": "review-quality-blocked"
+        },
+        {
+          "id": "codex-blockers-must-be-resolved",
+          "operator": "equals",
+          "field": "codex-blockers-resolved",
+          "value": true,
+          "remediation": "review-quality-blocked"
+        }
+      ]
+    },
+    {
+      "id": "gstack.verify.ordered-quality-gates.v1",
+      "description": "verification-gate → qa 的严格顺序验证证据。Guard 必须阻断：verification-gate 未真实运行或未通过；qa 未运行；qa 早于 verification-gate；任一证据不属于当前代码状态或当前 draft；调用顺序反转；qa 修改代码、产生新提交或发现待修复问题后仍使用旧证据；修复后没有重新执行完整 verification-gate → qa。任何 QA 变更或问题都会把旧证据标记 invalidated，并强制回退 execute → review；修复审查完成后必须用新代码状态和新 draft hash 重跑两门。",
+      "artifacts": [
+        {
+          "id": "ordered-verify-gates-report",
+          "kind": "report",
+          "required": true,
+          "paths": [
+            "openspec/changes/*/evidence/gstack/verify-ordered-gates.json"
+          ],
+          "validations": [
+            "artifact-exists",
+            "artifact-structured",
+            "semantic"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "verification-gate-run-id",
+          "required": true
+        },
+        {
+          "id": "verification-gate-passed",
+          "required": true
+        },
+        {
+          "id": "verification-gate-completed-at",
+          "required": true
+        },
+        {
+          "id": "verification-gate-code-state-hash",
+          "required": true
+        },
+        {
+          "id": "verification-gate-draft-hash",
+          "required": true
+        },
+        {
+          "id": "qa-run-id",
+          "required": true
+        },
+        {
+          "id": "qa-completed-at",
+          "required": true
+        },
+        {
+          "id": "qa-code-state-before-hash",
+          "required": true
+        },
+        {
+          "id": "qa-code-state-after-hash",
+          "required": true
+        },
+        {
+          "id": "qa-draft-hash",
+          "required": true
+        },
+        {
+          "id": "qa-after-verification-gate",
+          "required": true
+        },
+        {
+          "id": "qa-code-modified",
+          "required": true
+        },
+        {
+          "id": "qa-new-commit-created",
+          "required": true
+        },
+        {
+          "id": "qa-fix-required",
+          "required": true
+        },
+        {
+          "id": "verify-evidence-validity",
+          "required": true
+        },
+        {
+          "id": "remediation-return-node",
+          "required": true
+        },
+        {
+          "id": "ordered-gates-rerun-after-remediation",
+          "required": true
+        }
+      ],
+      "semanticRules": [
+        {
+          "id": "verification-gate-must-pass",
+          "operator": "equals",
+          "field": "verification-gate-passed",
+          "value": true
+        },
+        {
+          "id": "verification-before-qa",
+          "operator": "before",
+          "fields": [
+            "verification-gate-completed-at",
+            "qa-completed-at"
+          ]
+        },
+        {
+          "id": "qa-must-record-after-verification",
+          "operator": "equals",
+          "field": "qa-after-verification-gate",
+          "value": true
+        },
+        {
+          "id": "verify-code-state-must-be-consistent",
+          "operator": "same",
+          "fields": [
+            "verification-gate-code-state-hash",
+            "qa-code-state-before-hash",
+            "qa-code-state-after-hash"
+          ]
+        },
+        {
+          "id": "verify-evidence-must-match-current-code",
+          "operator": "matches-current-code",
+          "fields": [
+            "verification-gate-code-state-hash",
+            "qa-code-state-after-hash"
+          ]
+        },
+        {
+          "id": "verify-draft-must-be-consistent",
+          "operator": "same",
+          "fields": [
+            "verification-gate-draft-hash",
+            "qa-draft-hash"
+          ]
+        },
+        {
+          "id": "verify-evidence-must-match-current-draft",
+          "operator": "matches-protocol",
+          "fields": [
+            "verification-gate-draft-hash",
+            "qa-draft-hash"
+          ]
+        },
+        {
+          "id": "qa-must-not-modify-code",
+          "operator": "equals",
+          "field": "qa-code-modified",
+          "value": false,
+          "remediation": "verify-qa-invalidated"
+        },
+        {
+          "id": "qa-must-not-create-commit",
+          "operator": "equals",
+          "field": "qa-new-commit-created",
+          "value": false,
+          "remediation": "verify-qa-invalidated"
+        },
+        {
+          "id": "qa-must-not-leave-fixes",
+          "operator": "equals",
+          "field": "qa-fix-required",
+          "value": false,
+          "remediation": "verify-qa-invalidated"
+        },
+        {
+          "id": "verify-evidence-must-be-valid",
+          "operator": "equals",
+          "field": "verify-evidence-validity",
+          "value": "valid",
+          "remediation": "verify-qa-invalidated"
+        },
+        {
+          "id": "ordered-gates-must-be-current-after-remediation",
+          "operator": "equals",
+          "field": "ordered-gates-rerun-after-remediation",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "gstack.archive.health-score.v1",
+      "description": "真正 archive 前的 health 质量证据。Guard 阻断条件：health 未在 archive 动作前真实运行、复合评分缺失、分项结果缺失、跨 change 趋势缺失、证据不是当前代码状态或存在需要修复的 health 问题。失败后回退 execute → review → verify，完成修复和重新验证后再次运行 health。",
+      "artifacts": [
+        {
+          "id": "health-score-report",
+          "kind": "report",
+          "required": true,
+          "paths": [
+            "openspec/changes/*/evidence/gstack/archive-health.json"
+          ],
+          "validations": [
+            "artifact-exists",
+            "artifact-structured",
+            "semantic"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "health-run-before-archive",
+          "required": true
+        },
+        {
+          "id": "health-composite-score",
+          "required": true
+        },
+        {
+          "id": "health-component-scores",
+          "required": true
+        },
+        {
+          "id": "health-cross-change-trend",
+          "required": true
+        },
+        {
+          "id": "health-code-state-hash",
+          "required": true
+        },
+        {
+          "id": "health-blockers-resolved",
+          "required": true
+        }
+      ],
+      "semanticRules": [
+        {
+          "id": "health-must-run-before-archive",
+          "operator": "equals",
+          "field": "health-run-before-archive",
+          "value": true
+        },
+        {
+          "id": "health-score-must-be-numeric",
+          "operator": "number-at-least",
+          "field": "health-composite-score",
+          "value": 0
+        },
+        {
+          "id": "health-must-match-current-code",
+          "operator": "matches-current-code",
+          "fields": [
+            "health-code-state-hash"
+          ]
+        },
+        {
+          "id": "health-blockers-must-be-resolved",
+          "operator": "equals",
+          "field": "health-blockers-resolved",
+          "value": true,
+          "remediation": "archive-quality-blocked"
+        },
+        {
+          "id": "archive-requires-valid-verify-evidence",
+          "operator": "equals",
+          "field": "verify.verify-evidence-validity",
+          "value": "valid",
+          "remediation": "archive-quality-blocked"
+        },
+        {
+          "id": "archive-requires-qa-without-code-change",
+          "operator": "equals",
+          "field": "verify.qa-code-modified",
+          "value": false,
+          "remediation": "archive-quality-blocked"
+        },
+        {
+          "id": "archive-requires-qa-without-new-commit",
+          "operator": "equals",
+          "field": "verify.qa-new-commit-created",
+          "value": false,
+          "remediation": "archive-quality-blocked"
+        },
+        {
+          "id": "archive-requires-qa-without-pending-fix",
+          "operator": "equals",
+          "field": "verify.qa-fix-required",
+          "value": false,
+          "remediation": "archive-quality-blocked"
+        },
+        {
+          "id": "archive-verify-must-match-current-code",
+          "operator": "matches-current-code",
+          "fields": [
+            "verify.qa-code-state-after-hash"
+          ],
+          "remediation": "archive-quality-blocked"
+        },
+        {
+          "id": "archive-verify-must-match-current-draft",
+          "operator": "matches-protocol",
+          "fields": [
+            "verify.qa-draft-hash"
+          ],
+          "remediation": "archive-quality-blocked"
+        }
+      ]
+    }
+  ],
+  "remediationTransitions": [
+    {
+      "id": "design-quality-blocked",
+      "from": "design",
+      "to": "design",
+      "overlayEvents": [],
+      "onFailure": true,
+      "invalidateEvidence": [
+        "design"
+      ]
+    },
+    {
+      "id": "execute-quality-blocked",
+      "from": "execute",
+      "to": "execute",
+      "overlayEvents": [],
+      "onFailure": true,
+      "invalidateEvidence": [
+        "execute"
+      ]
+    },
+    {
+      "id": "subagent-quality-blocked",
+      "from": "subagent-execute",
+      "to": "subagent-execute",
+      "overlayEvents": [],
+      "onFailure": true,
+      "invalidateEvidence": [
+        "subagent-execute"
+      ]
+    },
+    {
+      "id": "review-quality-blocked",
+      "from": "review",
+      "to": "execute",
+      "overlayEvents": [],
+      "onFailure": true,
+      "invalidateEvidence": [
+        "execute",
+        "subagent-execute",
+        "review"
+      ]
+    },
+    {
+      "id": "verify-qa-invalidated",
+      "from": "verify",
+      "to": "execute",
+      "overlayEvents": [
+        "verify-fail"
+      ],
+      "onFailure": true,
+      "invalidateEvidence": [
+        "execute",
+        "subagent-execute",
+        "review",
+        "verify"
+      ]
+    },
+    {
+      "id": "archive-quality-blocked",
+      "from": "archive",
+      "to": "execute",
+      "overlayEvents": [
+        "archive-reopen",
+        "verify-fail"
+      ],
+      "onFailure": true,
+      "invalidateEvidence": [
+        "execute",
+        "subagent-execute",
+        "review",
+        "verify",
+        "archive"
+      ]
+    }
+  ],
+  "state": {
+    "kind": "comet-overlay",
+    "statePath": "openspec/changes/*/.comet.yaml",
+    "currentNodeField": "phase",
+    "completedNodesField": "completedNodes",
+    "evidenceField": "evidence"
+  },
+  "evals": [
+    {
+      "id": "comet-five-phase-contract",
+      "expectedNodeOrder": [
+        "open",
+        "design",
+        "plan",
+        "execute",
+        "subagent-execute",
+        "review",
+        "verify",
+        "archive"
+      ],
+      "requiredOutputSchemas": [
+        "comet.intake.v1",
+        "comet.design.v1",
+        "gstack.design.autoplan-review.v1",
+        "comet.plan.v1",
+        "comet.execution-evidence.v1",
+        "gstack.execute.segment-review.v1",
+        "comet.handoff.v1",
+        "gstack.subagent.handoff-review.v1",
+        "comet.review.v1",
+        "gstack.review.codex-adversarial.v1",
+        "comet.verify.v1",
+        "gstack.verify.ordered-quality-gates.v1",
+        "comet.archive.v1",
+        "gstack.archive.health-score.v1"
+      ],
+      "scenarios": [
+        {
+          "id": "qa-without-verification-gate",
+          "node": "verify",
+          "expect": "blocked",
+          "description": "没有运行 verification-gate 就运行 qa。",
+          "evidence": {
+            "completedChecks": [
+              "required-skill:verify.qa"
+            ],
+            "schemaEvidence": {
+              "verification-commands": [
+                "node --test"
+              ],
+              "verification-result": "pass",
+              "verification-gate-run-id": "missing",
+              "verification-gate-passed": false,
+              "verification-gate-completed-at": "2026-07-26T09:00:00.000Z",
+              "verification-gate-code-state-hash": "<current-code-state-hash>",
+              "verification-gate-draft-hash": "<current-draft-hash>",
+              "qa-run-id": "qa-only",
+              "qa-completed-at": "2026-07-26T09:05:00.000Z",
+              "qa-code-state-before-hash": "<current-code-state-hash>",
+              "qa-code-state-after-hash": "<current-code-state-hash>",
+              "qa-draft-hash": "<current-draft-hash>",
+              "qa-after-verification-gate": false,
+              "qa-code-modified": false,
+              "qa-new-commit-created": false,
+              "qa-fix-required": false,
+              "verify-evidence-validity": "invalidated",
+              "remediation-return-node": "verify",
+              "ordered-gates-rerun-after-remediation": false
+            }
+          },
+          "artifacts": [
+            "openspec/changes/eval-negative/evidence/gstack/verify-ordered-gates.json"
+          ],
+          "expectedFailures": [
+            "required-skill:verify.verification-gate"
+          ]
+        },
+        {
+          "id": "qa-before-verification-gate",
+          "node": "verify",
+          "expect": "blocked",
+          "description": "qa 在 verification-gate 之前运行。",
+          "evidence": {
+            "completedChecks": [
+              "required-skill:verify.verification-gate",
+              "required-skill:verify.qa"
+            ],
+            "schemaEvidence": {
+              "verification-commands": [
+                "node --test"
+              ],
+              "verification-result": "pass",
+              "verification-gate-run-id": "vg-late",
+              "verification-gate-passed": true,
+              "verification-gate-completed-at": "2026-07-26T09:10:00.000Z",
+              "verification-gate-code-state-hash": "<current-code-state-hash>",
+              "verification-gate-draft-hash": "<current-draft-hash>",
+              "qa-run-id": "qa-early",
+              "qa-completed-at": "2026-07-26T09:05:00.000Z",
+              "qa-code-state-before-hash": "<current-code-state-hash>",
+              "qa-code-state-after-hash": "<current-code-state-hash>",
+              "qa-draft-hash": "<current-draft-hash>",
+              "qa-after-verification-gate": false,
+              "qa-code-modified": false,
+              "qa-new-commit-created": false,
+              "qa-fix-required": false,
+              "verify-evidence-validity": "invalidated",
+              "remediation-return-node": "verify",
+              "ordered-gates-rerun-after-remediation": false
+            }
+          },
+          "artifacts": [
+            "openspec/changes/eval-negative/evidence/gstack/verify-ordered-gates.json"
+          ],
+          "expectedFailures": [
+            "verification-before-qa"
+          ]
+        },
+        {
+          "id": "qa-modified-code-then-archive",
+          "node": "archive",
+          "expect": "blocked",
+          "description": "QA 修改代码后仍尝试进入 archive。",
+          "evidenceByNode": {
+            "verify": {
+              "completedChecks": [
+                "required-skill:verify.verification-gate",
+                "required-skill:verify.qa"
+              ],
+              "schemaEvidence": {
+                "verification-gate-passed": true,
+                "qa-code-modified": true,
+                "qa-new-commit-created": false,
+                "qa-fix-required": true,
+                "qa-code-state-after-hash": "<current-code-state-hash>",
+                "qa-draft-hash": "<current-draft-hash>",
+                "verify-evidence-validity": "invalidated"
+              }
+            },
+            "archive": {
+              "completedChecks": [
+                "required-skill:archive.health"
+              ],
+              "schemaEvidence": {
+                "archive-summary": "attempted",
+                "archived-state": false,
+                "health-run-before-archive": true,
+                "health-composite-score": 90,
+                "health-component-scores": {
+                  "correctness": 90
+                },
+                "health-cross-change-trend": {
+                  "direction": "stable"
+                },
+                "health-code-state-hash": "<current-code-state-hash>",
+                "health-blockers-resolved": true
+              }
+            }
+          },
+          "evidence": {},
+          "artifacts": [
+            "openspec/changes/eval-negative/evidence/gstack/archive-health.json"
+          ],
+          "expectedFailures": [
+            "archive-requires-valid-verify-evidence",
+            "archive-requires-qa-without-code-change"
+          ]
+        },
+        {
+          "id": "old-draft-hash",
+          "node": "verify",
+          "expect": "blocked",
+          "description": "使用旧 draft hash 的验证证据。",
+          "evidence": {
+            "completedChecks": [
+              "required-skill:verify.verification-gate",
+              "required-skill:verify.qa"
+            ],
+            "schemaEvidence": {
+              "verification-commands": [
+                "node --test"
+              ],
+              "verification-result": "pass",
+              "verification-gate-run-id": "vg-old",
+              "verification-gate-passed": true,
+              "verification-gate-completed-at": "2026-07-26T09:00:00.000Z",
+              "verification-gate-code-state-hash": "<current-code-state-hash>",
+              "verification-gate-draft-hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "qa-run-id": "qa-old",
+              "qa-completed-at": "2026-07-26T09:05:00.000Z",
+              "qa-code-state-before-hash": "<current-code-state-hash>",
+              "qa-code-state-after-hash": "<current-code-state-hash>",
+              "qa-draft-hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "qa-after-verification-gate": true,
+              "qa-code-modified": false,
+              "qa-new-commit-created": false,
+              "qa-fix-required": false,
+              "verify-evidence-validity": "valid",
+              "remediation-return-node": "none",
+              "ordered-gates-rerun-after-remediation": true
+            }
+          },
+          "artifacts": [
+            "openspec/changes/eval-negative/evidence/gstack/verify-ordered-gates.json"
+          ],
+          "expectedFailures": [
+            "verify-evidence-must-match-current-draft"
+          ]
+        },
+        {
+          "id": "subagent-handoff-without-review",
+          "node": "subagent-execute",
+          "expect": "blocked",
+          "description": "子代理 handoff 没有 review 证据。",
+          "evidence": {
+            "completedChecks": [],
+            "schemaEvidence": {
+              "handoff-request": "implementation segment",
+              "handoff-result": "returned",
+              "handoff-review-loaded": false,
+              "handoff-review-result": "missing",
+              "subagent-returned-evidence": true,
+              "handoff-code-state-hash": "<current-code-state-hash>",
+              "handoff-review-blockers-resolved": false
+            }
+          },
+          "artifacts": [
+            "openspec/changes/eval-negative/evidence/gstack/subagent-handoff-1.json"
+          ],
+          "expectedFailures": [
+            "required-skill:subagent-execute.review"
+          ]
+        },
+        {
+          "id": "archive-without-health-score",
+          "node": "archive",
+          "expect": "blocked",
+          "description": "archive 前没有 health 评分。",
+          "evidence": {
+            "completedChecks": [
+              "required-skill:archive.health"
+            ],
+            "schemaEvidence": {
+              "archive-summary": "attempted",
+              "archived-state": false,
+              "health-run-before-archive": true,
+              "health-component-scores": {
+                "correctness": 90
+              },
+              "health-cross-change-trend": {
+                "direction": "stable"
+              },
+              "health-code-state-hash": "<current-code-state-hash>",
+              "health-blockers-resolved": true
+            }
+          },
+          "artifacts": [
+            "openspec/changes/eval-negative/evidence/gstack/archive-health.json"
+          ],
+          "expectedFailures": [
+            "gstack.archive.health-score.v1.health-composite-score"
+          ]
+        }
+      ]
+    }
+  ]
+}

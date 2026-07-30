@@ -1,0 +1,15 @@
+allowedSkills:
+  - comet-gstack-quality-gates
+  - comet-gstack-quality-gates-open
+  - comet-gstack-quality-gates-design
+  - comet-gstack-quality-gates-plan
+  - comet-gstack-quality-gates-execute
+  - comet-gstack-quality-gates-subagent-execute
+  - comet-gstack-quality-gates-review
+  - comet-gstack-quality-gates-verify
+  - comet-gstack-quality-gates-archive
+allowedAgents: []
+allowedTools: []
+maxIterations: 10
+maxRetriesPerAction: 2
+confirmationRequiredFor: []
