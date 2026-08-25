@@ -176,3 +176,13 @@ test('blocks a route subprocess when selection changed after its parent pinned a
   assert.notEqual(result.status, 0);
   assert.match(result.stdout + result.stderr, /current change selection changed from 'beta-change' to 'alpha-change'/u);
 });
+
+test('blocks a route subprocess when its pinned change is no longer active', async (t) => {
+  const root = await createFixture({ changes: ['alpha-change'], selection: 'alpha-change' });
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const result = runRoute(root, 'beta-change');
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout + result.stderr, /selected Classic change 'beta-change' is not active/u);
+});

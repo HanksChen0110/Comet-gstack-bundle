@@ -100,7 +100,12 @@ export function createCometChangeResolver(runRoot) {
         'No active Comet change; use /comet-open or the permanent /comet-classic entry to create one.',
       );
     }
-    if (changes.length === 1) return changes[0];
+    if (changes.length === 1) {
+      if (pinnedChangeName && changes[0].name !== pinnedChangeName) {
+        throw new Error(`selected Classic change '${pinnedChangeName}' is not active.`);
+      }
+      return changes[0];
+    }
 
     const selectedName = await readCurrentSelection(runRoot);
     if (selectedName) {
