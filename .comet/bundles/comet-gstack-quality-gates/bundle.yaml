@@ -77,6 +77,10 @@ resources:
       path: skills/comet-gstack-quality-gates/scripts/change-selection.mjs
       sideEffect: read
       runtime: node
+    - id: structured-artifact
+      path: skills/comet-gstack-quality-gates/scripts/structured-artifact.mjs
+      sideEffect: read
+      runtime: node
     - id: workflow-state
       path: skills/comet-gstack-quality-gates/scripts/workflow-state.mjs
       sideEffect: write

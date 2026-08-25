@@ -5,6 +5,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createCometChangeResolver, parseSimpleYaml } from './change-selection.mjs';
+import { readStructuredArtifact } from './structured-artifact.mjs';
 
 const requestedCommand = process.argv[2] ?? 'context';
 const command = requestedCommand === 'retry-remediation' ? 'exit' : requestedCommand;
@@ -1541,18 +1542,22 @@ async function invalidRequiredArtifacts(
       for (const artifactPath of paths) {
         let parsed;
         if ((artifact.validations ?? []).includes('artifact-structured')) {
-          try {
-            parsed = JSON.parse(await fs.readFile(artifactPath, 'utf8'));
-          } catch {
-            continue;
-          }
-          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+          parsed = await readStructuredArtifact(artifactPath);
+          if (!parsed) continue;
         }
         if ((artifact.validations ?? []).includes('semantic')) {
+          if (parsed?.format === 'markdown') {
+            if (!String(schemaId).startsWith('comet.')) {
+              lastFailure = schemaId + '.' + artifact.id + '.semantic';
+              continue;
+            }
+            accepted = true;
+            if (node.id !== 'execute') break;
+            continue;
+          }
           if (!parsed) {
-            try {
-              parsed = JSON.parse(await fs.readFile(artifactPath, 'utf8'));
-            } catch {
+            parsed = await readStructuredArtifact(artifactPath);
+            if (!parsed) {
               lastFailure = schemaId + '.' + artifact.id + '.semantic';
               continue;
             }
