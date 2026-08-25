@@ -126,14 +126,18 @@ async function readJson(file) {
   return JSON.parse(await fs.readFile(file, 'utf8'));
 }
 
-function validatedOverlayNode() {
+function validatedOverlayNode(expectedChangeName = null) {
   const result = spawnSync(
     process.execPath,
     [path.join(packageRoot, 'scripts', 'workflow-guard.mjs'), 'route'],
     {
       cwd: runRoot,
       encoding: 'utf8',
-      env: { ...process.env, COMET_RUN_ROOT: runRoot },
+      env: {
+        ...process.env,
+        COMET_RUN_ROOT: runRoot,
+        ...(expectedChangeName ? { COMET_SELECTED_CHANGE: expectedChangeName } : {}),
+      },
     },
   );
   if (result.status !== 0) {
@@ -177,7 +181,7 @@ async function main() {
       return;
     }
     const change = await resolveCometOverlayChange();
-    const current = validatedOverlayNode();
+    const current = validatedOverlayNode(change.name);
     if (!current || !nodes.some((node) => node.id === current)) {
       throw new Error('active Comet change has no valid workflow Node');
     }

@@ -64,6 +64,8 @@ async function readCurrentSelection(runRoot) {
 }
 
 export function createCometChangeResolver(runRoot) {
+  let pinnedChangeName = process.env.COMET_SELECTED_CHANGE?.trim() || null;
+
   async function activeCometChanges() {
     const changesRoot = path.join(runRoot, 'openspec', 'changes');
     let entries;
@@ -102,10 +104,16 @@ export function createCometChangeResolver(runRoot) {
 
     const selectedName = await readCurrentSelection(runRoot);
     if (selectedName) {
+      if (pinnedChangeName && selectedName !== pinnedChangeName) {
+        throw new Error(
+          `current change selection changed from '${pinnedChangeName}' to '${selectedName}' during one workflow command.`,
+        );
+      }
       const selected = changes.find((change) => change.name === selectedName);
       if (!selected) {
         throw new Error(`selected Classic change '${selectedName}' is not active.`);
       }
+      pinnedChangeName = selectedName;
       return selected;
     }
 

@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 const scriptsRoot = path.dirname(fileURLToPath(import.meta.url));
 const workflowStatePath = path.join(scriptsRoot, 'workflow-state.mjs');
+const workflowGuardPath = path.join(scriptsRoot, 'workflow-guard.mjs');
+const hookGuardPath = path.join(scriptsRoot, 'comet-hook-guard.mjs');
 
 async function createFixture({ changes, selection, selectionRaw }) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'comet-selection-'));
@@ -52,6 +54,34 @@ async function createFixture({ changes, selection, selectionRaw }) {
 
 function runStatus(root) {
   return spawnSync(process.execPath, [workflowStatePath, 'status'], {
+    cwd: root,
+    env: { ...process.env, COMET_RUN_ROOT: root },
+    encoding: 'utf8',
+  });
+}
+
+function runNext(root) {
+  return spawnSync(process.execPath, [workflowStatePath, 'next'], {
+    cwd: root,
+    env: { ...process.env, COMET_RUN_ROOT: root },
+    encoding: 'utf8',
+  });
+}
+
+function runRoute(root, expectedSelection) {
+  return spawnSync(process.execPath, [workflowGuardPath, 'route'], {
+    cwd: root,
+    env: {
+      ...process.env,
+      COMET_RUN_ROOT: root,
+      COMET_SELECTED_CHANGE: expectedSelection,
+    },
+    encoding: 'utf8',
+  });
+}
+
+function runHook(root) {
+  return spawnSync(process.execPath, [hookGuardPath, 'before_tool'], {
     cwd: root,
     env: { ...process.env, COMET_RUN_ROOT: root },
     encoding: 'utf8',
@@ -115,4 +145,34 @@ test('keeps single-active-change behavior even when selection is stale', async (
 
   assert.equal(status.status, 'running', JSON.stringify(status));
   assert.equal(status.change, 'alpha-change');
+});
+
+test('routes next through the selected active change', async (t) => {
+  const root = await createFixture({ changes: ['alpha-change', 'beta-change'], selection: 'beta-change' });
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const result = runNext(root);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /^NODE:\s+open$/mu);
+});
+
+test('routes the hook through the selected active change', async (t) => {
+  const root = await createFixture({ changes: ['alpha-change', 'beta-change'], selection: 'beta-change' });
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const result = runHook(root);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /^NODE:\s+open$/mu);
+});
+
+test('blocks a route subprocess when selection changed after its parent pinned a change', async (t) => {
+  const root = await createFixture({ changes: ['alpha-change', 'beta-change'], selection: 'alpha-change' });
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const result = runRoute(root, 'beta-change');
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout + result.stderr, /current change selection changed from 'beta-change' to 'alpha-change'/u);
 });

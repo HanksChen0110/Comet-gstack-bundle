@@ -180,14 +180,18 @@ function remediationRetryCommand(from) {
   );
 }
 
-function validatedOverlayNode() {
+function validatedOverlayNode(expectedChangeName = null) {
   const result = spawnSync(
     process.execPath,
     [path.join(packageRoot, 'scripts', 'workflow-guard.mjs'), 'route'],
     {
       cwd: runRoot,
       encoding: 'utf8',
-      env: { ...process.env, COMET_RUN_ROOT: runRoot },
+      env: {
+        ...process.env,
+        COMET_RUN_ROOT: runRoot,
+        ...(expectedChangeName ? { COMET_SELECTED_CHANGE: expectedChangeName } : {}),
+      },
     },
   );
   if (result.status !== 0) {
@@ -256,7 +260,7 @@ async function main() {
         const change = await resolveCometOverlayChange();
         const evidence = await readOverlayEvidence(protocol, change);
         const remediation = activeRemediation(evidence);
-        const currentNode = validatedOverlayNode();
+        const currentNode = validatedOverlayNode(change.name);
         console.log(
           JSON.stringify(
             {
@@ -301,7 +305,7 @@ async function main() {
         printRemediation(protocol, remediation);
         return;
       }
-      const nodeId = validatedOverlayNode();
+      const nodeId = validatedOverlayNode(change.name);
       printNext(protocol, route(protocol).find((node) => node.id === nodeId) ?? null);
       return;
     }
@@ -312,7 +316,7 @@ async function main() {
       if (!node) throw new Error('Unknown workflow Node: ' + nodeId);
       const change = await resolveCometOverlayChange();
       const evidence = await readOverlayEvidence(protocol, change);
-      const currentNode = validatedOverlayNode();
+      const currentNode = validatedOverlayNode(change.name);
       if (currentNode !== node.id) {
         throw new Error(
           'Current Node is ' + String(currentNode) + '; cannot record ' + node.id + '.',
@@ -350,7 +354,10 @@ async function main() {
       };
       await writeOverlayEvidence(protocol, change, evidence);
       console.log('EVIDENCE: ' + node.id);
-      printNext(protocol, route(protocol).find((item) => item.id === validatedOverlayNode()) ?? null);
+      printNext(
+        protocol,
+        route(protocol).find((item) => item.id === validatedOverlayNode(change.name)) ?? null,
+      );
       return;
     }
     throw new Error('Unknown command: ' + command);
