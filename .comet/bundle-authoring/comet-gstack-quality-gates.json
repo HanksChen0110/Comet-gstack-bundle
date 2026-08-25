@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "name": "comet-gstack-quality-gates",
   "mode": "create",
-  "status": "ready",
+  "status": "drift-conflict",
   "draftPath": ".comet/bundle-drafts/comet-gstack-quality-gates",
-  "currentHash": "c3d1b6079837dc825ff6358258716a9694aef7322d14bb4d0c3da42d606d77fc",
+  "currentHash": "50573a9fd8d967de27942f498aa3562071d4f52d7d63ea3f92f034614975eabd",
   "candidates": [
     {
       "name": "autoplan",
@@ -3367,5 +3367,9 @@
     "hash": "c3d1b6079837dc825ff6358258716a9694aef7322d14bb4d0c3da42d606d77fc",
     "path": ".comet/bundles/comet-gstack-quality-gates",
     "publishedAt": "2026-07-30T01:02:20.238Z"
+  },
+  "conflict": {
+    "draftHash": "50573a9fd8d967de27942f498aa3562071d4f52d7d63ea3f92f034614975eabd",
+    "readyHash": "50573a9fd8d967de27942f498aa3562071d4f52d7d63ea3f92f034614975eabd"
   }
 }

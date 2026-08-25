@@ -13,7 +13,7 @@ description: "仅在显式调用 /comet-gstack-quality-gates 或由 Comet 恢复
 
 Comet Classic 的 `openspec/changes/<change>/.comet.yaml` 和原 Node implementation 是唯一控制状态机；overlay sidecar 只保存 evidence、receipt、Guard result、invalidation、handoff、sealed segment inventory、archive authorization 与 archive claim，不覆盖 control Node，也不建立第二份主状态。
 
-1. 每次进入或恢复都先运行 `workflow-state.mjs status` 查看唯一 active change、Classic phase、remediation 与诊断信息。没有 active change 时进入永久 `/comet-classic`/`/comet-open`；多个 active change 时停止让用户选择，不能猜最近一个。
+1. 每次进入或恢复都先运行 `workflow-state.mjs status` 查看当前 active change、Classic phase、remediation 与诊断信息。没有 active change 时进入永久 `/comet-classic`/`/comet-open`；多个 active changes 时只接受 `.comet/current-change.json` 中通过 `comet state select` 写入、符合 `comet.selection.v2`、`workflow: classic` 且仍指向 active change 的显式选择。缺少选择、JSON/Schema 损坏或选择已失效时必须阻断，不能猜最近一个。
 2. 随后运行 `workflow-state.mjs next`。`status`、`next` 和 Classic hook 都调用同一内部 route resolver，把 `.comet.yaml`、当前有效 ledger Guard result 与适用的 remediation chain 联合计算成同一个 current Node；三者不一致表示 runtime 错误，必须阻断，不能任选一个继续。只加载同一次 `next` 输出中 `NEXT: auto` 对应的一个 `NODE:`/`SKILL:`。
 3. 多个 invalidation 可以同时留在审计账本中。路由和 Guard 只绑定对当前 Node 适用的 chain，即 `from` 为该 Node 或 `invalidatedNodes` 包含该 Node；更新但无关的 invalidation 不得抢占路由，也不得污染当前 receipt/Guard result。`NEXT: retry-remediation` 时只执行同次输出的完整 `RETRY:`，由统一 resolver 保持同一 chain 与目标 Node。
 4. `NEXT: manual` 或稳定 blocked 时报告证据、原因与唯一接手动作，不自行推进。artifact 缺失/被改写、receipt digest 改变、change/code/draft/protocol 漂移、前驱顺序错误或 blocker 未处置时，旧记录只保留审计，不能恢复为 PASS。

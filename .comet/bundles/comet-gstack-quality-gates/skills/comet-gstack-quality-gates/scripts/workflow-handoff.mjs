@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createCometChangeResolver } from './change-selection.mjs';
 
 const command = process.argv[2] ?? 'status';
 const nodeId = process.argv[3] ?? null;
@@ -11,78 +12,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, '..');
 const runRoot = process.env.COMET_RUN_ROOT ? path.resolve(process.env.COMET_RUN_ROOT) : process.cwd();
 const protocolPath = path.join(packageRoot, 'reference', 'workflow-protocol.json');
+const { resolveCometOverlayChange } = createCometChangeResolver(runRoot);
 
 function isCometOverlay(protocol) {
   return protocol.kind === 'comet-five-phase-overlay';
-}
-
-function parseSimpleYaml(raw) {
-  const state = {};
-  for (const line of String(raw).split(/\r?\n/u)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const match = /^([^:#][^:]*):\s*(.*)$/u.exec(line);
-    if (!match) continue;
-    const key = match[1].trim();
-    let value = match[2].trim();
-    const commentIndex = value.indexOf(' #');
-    if (commentIndex >= 0) value = value.slice(0, commentIndex).trim();
-    if (value === 'true') state[key] = true;
-    else if (value === 'false') state[key] = false;
-    else if (value === 'null') state[key] = null;
-    else if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      state[key] = value.slice(1, -1);
-    } else {
-      state[key] = value;
-    }
-  }
-  return state;
-}
-
-async function activeCometChanges() {
-  const changesRoot = path.join(runRoot, 'openspec', 'changes');
-  let entries;
-  try {
-    entries = await fs.readdir(changesRoot, { withFileTypes: true });
-  } catch (error) {
-    if (error && typeof error === 'object' && error.code === 'ENOENT') return [];
-    throw error;
-  }
-  const changes = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const statePath = path.join(changesRoot, entry.name, '.comet.yaml');
-    let state;
-    try {
-      state = parseSimpleYaml(await fs.readFile(statePath, 'utf8'));
-    } catch (error) {
-      if (error && typeof error === 'object' && error.code === 'ENOENT') continue;
-      throw error;
-    }
-    const archived = state.archived === true || String(state.archived ?? '').toLowerCase() === 'true';
-    if (!archived) changes.push({ name: entry.name, statePath, state });
-  }
-  return changes.sort((left, right) => left.name.localeCompare(right.name));
-}
-
-async function resolveCometOverlayChange() {
-  const changes = await activeCometChanges();
-  if (changes.length === 0) {
-    throw new Error(
-      'No active Comet change; use /comet-open or the permanent /comet-classic entry to create one.',
-    );
-  }
-  if (changes.length > 1) {
-    throw new Error(
-      'Multiple active Comet changes: ' +
-        changes.map((change) => change.name).join(', ') +
-        '. Ask the user which change to resume.',
-    );
-  }
-  return changes[0];
 }
 
 function hasOverlayEvidence(evidence, nodeId) {

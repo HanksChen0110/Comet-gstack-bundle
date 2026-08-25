@@ -73,6 +73,10 @@ resources:
       path: skills/comet-gstack-quality-gates/scripts/comet-hook-guard.mjs
       sideEffect: read
       runtime: node
+    - id: change-selection
+      path: skills/comet-gstack-quality-gates/scripts/change-selection.mjs
+      sideEffect: read
+      runtime: node
     - id: workflow-state
       path: skills/comet-gstack-quality-gates/scripts/workflow-state.mjs
       sideEffect: write
