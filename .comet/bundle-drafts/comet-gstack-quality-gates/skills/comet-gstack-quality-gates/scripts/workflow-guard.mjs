@@ -855,6 +855,7 @@ function excludedFromCodeState(relative) {
     normalized === '.comet' ||
     normalized.startsWith('.comet/') ||
     /^openspec\/changes\/[^/]+\/\.comet\.yaml$/u.test(normalized) ||
+    /^openspec\/changes\/[^/]+\/\.comet(?:\/|$)/u.test(normalized) ||
     /^openspec\/changes\/[^/]+\/evidence\//u.test(normalized)
   );
 }
@@ -876,6 +877,7 @@ async function currentCodeStateHash() {
     '.',
     ':(exclude).comet/**',
     ':(exclude)openspec/changes/**/.comet.yaml',
+    ':(exclude)openspec/changes/**/.comet/**',
     ':(exclude)openspec/changes/**/evidence/**',
   ];
   hash.update('TRACKED\0' + gitOutput(diffArgs) + '\0');
