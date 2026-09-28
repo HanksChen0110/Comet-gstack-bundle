@@ -5,6 +5,8 @@ description: "仅在 /comet-gstack-quality-gates-plan 被显式调用或由 come
 
 # Plan
 
+入口先运行 `workflow-policy.mjs check`；当前 OpenSpec/项目规则摘要与已确认版本不符或预算到限时停止。计划仅列已批准场景和受影响检查；项目规则要求的完整回归照做。单条检查由 `workflow-policy.mjs run-check` 限时执行。
+
 ## 节点目标
 
 完成 `comet-gstack-quality-gates` 的 `plan` 节点。
@@ -88,4 +90,3 @@ node comet-gstack-quality-gates/scripts/workflow-guard.mjs exit plan --apply
 ## 恢复
 
 依次运行 `node comet-gstack-quality-gates/scripts/workflow-state.mjs status` 与 `node comet-gstack-quality-gates/scripts/workflow-state.mjs next`。若 remediation 正在执行或可重试，按输出的 `RETRY`、`NODE`、`SKILL` 唯一路径继续；实际重试命令是 `node comet-gstack-quality-gates/scripts/workflow-guard.mjs retry-remediation <from>`。原 Classic `.comet.yaml` 是唯一控制状态。
-

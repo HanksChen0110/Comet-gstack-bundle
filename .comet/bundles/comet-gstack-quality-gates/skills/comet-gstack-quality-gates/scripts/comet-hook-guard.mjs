@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createCometChangeResolver } from './change-selection.mjs';
+import { checkStartApproval } from './workflow-policy.mjs';
 
 const event = process.argv[2] ?? 'before_tool';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -63,8 +64,7 @@ function overlayNodeFromState(state, evidence = {}, validGuardNodeIds = null) {
     }
     const executionNode = overlayBuildExecutionNode(state);
     if (!hasSuccessfulOverlayGuard(evidence, executionNode, validGuardNodeIds)) return executionNode;
-    if (String(state.review_mode ?? 'off') !== 'off') return 'review';
-    return executionNode;
+    return 'review';
   }
   if (phase === 'verify') return 'verify';
   if (phase === 'archive') return 'archive';
@@ -151,6 +151,35 @@ function validatedOverlayNode(expectedChangeName = null) {
   return node;
 }
 
+async function directWriteTool() {
+  if (process.env.FILE_PATH?.trim() || event === 'before_write') return true;
+  if (process.stdin.isTTY) return false;
+  const payload = await new Promise((resolve) => {
+    let raw = '';
+    const done = (value) => {
+      clearTimeout(timer);
+      process.stdin.removeListener('data', onData);
+      process.stdin.removeListener('end', onEnd);
+      process.stdin.pause();
+      resolve(value);
+    };
+    const onData = (chunk) => { raw += String(chunk).slice(0, 65536 - raw.length); };
+    const onEnd = () => done(raw);
+    const timer = setTimeout(() => done(raw), 300);
+    process.stdin.on('data', onData);
+    process.stdin.once('end', onEnd);
+    process.stdin.resume();
+  });
+  if (/^\*\*\* (?:Begin Patch|Add File|Update File|Delete File)/mu.test(payload)) return true;
+  let input;
+  try { input = JSON.parse(payload); } catch { return false; }
+  const name = String(input?.tool_name ?? input?.toolName ?? input?.tool ?? input?.name ?? '')
+    .toLowerCase().replace(/[^a-z0-9]/gu, '');
+  return new Set(['write', 'edit', 'applypatch', 'create', 'createfile', 'editfile',
+    'writefile', 'writefiletool', 'patch', 'deletefile', 'searchreplace',
+    'strreplaceeditor']).has(name);
+}
+
 function route(protocol) {
   return (protocol.nodes ?? []).filter((node) => !node.disabled);
 }
@@ -184,6 +213,9 @@ async function main() {
     const current = validatedOverlayNode(change.name);
     if (!current || !nodes.some((node) => node.id === current)) {
       throw new Error('active Comet change has no valid workflow Node');
+    }
+    if (current !== 'open' && current !== 'design' && await directWriteTool()) {
+      await checkStartApproval(change.name);
     }
     console.log('workflow-hook-guard-ok');
     console.log('EVENT: ' + event);

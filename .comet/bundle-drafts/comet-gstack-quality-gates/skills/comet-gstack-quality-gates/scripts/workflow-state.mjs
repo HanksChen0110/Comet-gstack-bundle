@@ -63,8 +63,7 @@ function overlayNodeFromState(state, evidence = {}, validGuardNodeIds = null) {
     }
     const executionNode = overlayBuildExecutionNode(state);
     if (!hasSuccessfulOverlayGuard(evidence, executionNode, validGuardNodeIds)) return executionNode;
-    if (String(state.review_mode ?? 'off') !== 'off') return 'review';
-    return executionNode;
+    return 'review';
   }
   if (phase === 'verify') return 'verify';
   if (phase === 'archive') return 'archive';

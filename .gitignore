@@ -9,6 +9,7 @@ node_modules/
 !.comet/bundle-drafts/comet-gstack-quality-gates/rules/
 !.comet/bundle-drafts/comet-gstack-quality-gates/skills/
 .comet/eval-results/
+.comet/eval-handoffs/
 .comet/workflow-evidence/
 *.log
 Thumbs.db

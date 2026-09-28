@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createCometChangeResolver, parseSimpleYaml } from './change-selection.mjs';
 import { readStructuredArtifact } from './structured-artifact.mjs';
+import { checkSecondReview, checkStartApproval, checkWebQa, consumeRepairRound } from './workflow-policy.mjs';
 
 const requestedCommand = process.argv[2] ?? 'context';
 const command = requestedCommand === 'retry-remediation' ? 'exit' : requestedCommand;
@@ -71,8 +72,7 @@ function overlayNodeFromState(state, evidence = {}, validGuardNodeIds = null) {
     }
     const executionNode = overlayBuildExecutionNode(state);
     if (!hasSuccessfulOverlayGuard(evidence, executionNode, validGuardNodeIds)) return executionNode;
-    if (String(state.review_mode ?? 'off') !== 'off') return 'review';
-    return executionNode;
+    return 'review';
   }
   if (phase === 'verify') return 'verify';
   if (phase === 'archive') return 'archive';
@@ -205,6 +205,7 @@ function runClassicGuardApply(change, phase) {
   return spawnSync(executable, args, {
     cwd: runRoot,
     encoding: 'utf8',
+    timeout: 600000,
   });
 }
 
@@ -360,6 +361,11 @@ async function validReceipts(protocol, node, allEvidence, change = null) {
   const protocolHash = currentProtocolHash(protocol);
   const codeStateHash = await currentCodeStateHash();
   const draftHash = await currentBundleDraftHash(protocol);
+  let specDigest = null;
+  if (!['open', 'design'].includes(node.id) && change) {
+    try { specDigest = (await checkStartApproval(change.name, { budget: false })).specDigest; }
+    catch { return []; }
+  }
   const invalidatedReceiptIds = new Set(
     ledger.invalidations.flatMap((entry) => entry.receiptIds ?? []),
   );
@@ -374,6 +380,7 @@ async function validReceipts(protocol, node, allEvidence, change = null) {
       receipt.protocolHash !== protocolHash ||
       receipt.codeStateHash !== codeStateHash ||
       receipt.draftHash !== draftHash ||
+      (specDigest !== null && receipt.specDigest !== specDigest) ||
       receipt.scope !== binding.scope ||
       receipt.enforcement !== binding.enforcement ||
       receipt.status !== 'passed' ||
@@ -397,6 +404,9 @@ async function validGuardResults(protocol, change, allEvidence) {
   const protocolHash = currentProtocolHash(protocol);
   const codeStateHash = await currentCodeStateHash();
   const draftHash = await currentBundleDraftHash(protocol);
+  let approvedSpecDigest = null;
+  try { approvedSpecDigest = (await checkStartApproval(change.name, { budget: false })).specDigest; }
+  catch { /* design/open may precede approval */ }
   const invalidatedGuardIds = new Set(
     ledger.invalidations.flatMap((entry) => entry.guardResultIds ?? []),
   );
@@ -410,6 +420,7 @@ async function validGuardResults(protocol, change, allEvidence) {
       result.protocolHash !== protocolHash ||
       result.codeStateHash !== codeStateHash ||
       result.draftHash !== draftHash ||
+      (!['open', 'design'].includes(node.id) && result.specDigest !== approvedSpecDigest) ||
       invalidatedGuardIds.has(result.id)
     ) {
       continue;
@@ -534,12 +545,8 @@ async function currentVerifyAuthorization(protocol, change, allEvidence) {
   const requiredSkills = new Set(
     (verifyNode?.requiredSkillCalls ?? []).map((binding) => binding.skill),
   );
-  if (
-    !verifyNode ||
-    !requiredSkills.has('verification-gate') ||
-    !requiredSkills.has('qa')
-  ) {
-    return null;
+  if (!verifyNode || !requiredSkills.has('verification-gate')) {
+    throw new Error('Verify protocol must require verification-gate.');
   }
   const verifyEvidence = evidenceFor({ evidence: allEvidence }, 'verify');
   if (!verifyEvidence) throw new Error('Current ledger-backed verify evidence is missing.');
@@ -547,16 +554,7 @@ async function currentVerifyAuthorization(protocol, change, allEvidence) {
   const gateReceipt = [...receipts]
     .reverse()
     .find((receipt) => receipt.skill === 'verification-gate');
-  const qaReceipt = [...receipts].reverse().find((receipt) => receipt.skill === 'qa');
-  if (
-    !gateReceipt ||
-    !qaReceipt ||
-    qaReceipt.predecessorReceiptId !== gateReceipt.id ||
-    qaReceipt.predecessorReportDigest !== gateReceipt.reportDigest ||
-    Date.parse(gateReceipt.mintedAt) >= Date.parse(qaReceipt.mintedAt)
-  ) {
-    throw new Error('Current verification-gate → qa receipt chain is missing or invalid.');
-  }
+  if (!gateReceipt) throw new Error('Current verification-gate receipt is missing or invalid.');
   const missingCoverage = missingReceiptSchemaCoverage(
     protocol,
     verifyNode,
@@ -597,19 +595,16 @@ async function currentVerifyAuthorization(protocol, change, allEvidence) {
   if (!verifyGuard) {
     throw new Error('Current verify Guard result is missing or stale.');
   }
-  if (
-    !(verifyGuard.receiptIds ?? []).includes(gateReceipt.id) ||
-    !(verifyGuard.receiptIds ?? []).includes(qaReceipt.id)
-  ) {
-    throw new Error('Current verify Guard result is not bound to both ordered receipts.');
+  if (!(verifyGuard.receiptIds ?? []).includes(gateReceipt.id)) {
+    throw new Error('Current verify Guard result is not bound to the verification receipt.');
   }
   const artifactSnapshots = Array.isArray(verifyGuard.artifactSnapshots)
     ? verifyGuard.artifactSnapshots
     : [];
   return {
     guardResultId: verifyGuard.id,
-    receiptIds: [gateReceipt.id, qaReceipt.id],
-    reportDigests: [gateReceipt.reportDigest, qaReceipt.reportDigest],
+    receiptIds: [gateReceipt.id],
+    reportDigests: [gateReceipt.reportDigest],
     artifactSnapshots,
     snapshotDigest: createHash('sha256')
       .update(JSON.stringify(artifactSnapshots))
@@ -854,9 +849,8 @@ function excludedFromCodeState(relative) {
   return (
     normalized === '.comet' ||
     normalized.startsWith('.comet/') ||
-    /^openspec\/changes\/[^/]+\/\.comet\.yaml$/u.test(normalized) ||
-    /^openspec\/changes\/[^/]+\/\.comet(?:\/|$)/u.test(normalized) ||
-    /^openspec\/changes\/[^/]+\/evidence\//u.test(normalized)
+    normalized.startsWith('openspec/changes/') ||
+    normalized.startsWith('docs/superpowers/reports/')
   );
 }
 
@@ -865,30 +859,20 @@ async function currentCodeStateHash() {
   if (gitOutput(['rev-parse', '--is-inside-work-tree']).trim() !== 'true') {
     throw new Error('Cannot calculate current code state hash: run root is not a Git work tree.');
   }
-  const headResult = gitAttempt(['rev-parse', 'HEAD']);
-  const head = headResult.status === 0 ? headResult.stdout.trim() : 'UNBORN';
-  hash.update('HEAD\0' + head + '\0');
-  const diffArgs = [
-    'diff',
-    '--binary',
-    '--no-ext-diff',
-    ...(head === 'UNBORN' ? ['--cached'] : ['HEAD']),
-    '--',
-    '.',
-    ':(exclude).comet/**',
-    ':(exclude)openspec/changes/**/.comet.yaml',
-    ':(exclude)openspec/changes/**/.comet/**',
-    ':(exclude)openspec/changes/**/evidence/**',
-  ];
-  hash.update('TRACKED\0' + gitOutput(diffArgs) + '\0');
-  const untracked = gitOutput(['ls-files', '--others', '--exclude-standard', '-z'])
-    .split('\0')
-    .filter(Boolean)
+  const files = [...new Set([
+    ...gitOutput(['ls-files', '-z']).split('\0').filter(Boolean),
+    ...gitOutput(['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean),
+  ])]
     .filter((relative) => !excludedFromCodeState(relative))
     .sort();
-  for (const relative of untracked) {
-    hash.update('UNTRACKED\0' + relative.replaceAll('\\', '/') + '\0');
-    hash.update(await fs.readFile(path.join(runRoot, relative)));
+  for (const relative of files) {
+    const file = path.join(runRoot, relative);
+    hash.update('FILE\0' + relative.replaceAll('\\', '/') + '\0');
+    try { hash.update(await fs.readFile(file)); }
+    catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+      hash.update('DELETED');
+    }
     hash.update('\0');
   }
   return hash.digest('hex');
@@ -1160,6 +1144,9 @@ async function applyOverlayRemediation(protocol, change, node, failures) {
             (entry.status === 'applying' || entry.status === 'retry'),
         ) ?? null;
     if (!invalidation) {
+      if (transition.to === 'execute' && transition.from !== 'execute') {
+        await consumeRepairRound(change.name);
+      }
       const invalidatedNodes = transition.invalidateEvidence ?? [];
       const invalidatedEvidence = {};
       for (const evidenceNode of invalidatedNodes) {
@@ -1429,11 +1416,8 @@ async function applyOverlayRemediation(protocol, change, node, failures) {
   return applied;
 }
 
-async function blockOverlay(protocol, change, node, message, failures = []) {
+async function blockOverlay(protocol, change, node, message) {
   console.error(message);
-  if (apply) {
-    await applyOverlayRemediation(protocol, change, node, failures);
-  }
 }
 
 async function blockOnSemanticFailures(protocol, node, evidence, allEvidence, change = null) {
@@ -1909,6 +1893,8 @@ async function mintOverlayReceipt(protocol, change, node, skill, artifactInput) 
     protocolHash,
     codeStateHash,
     draftHash,
+    ...(!['open', 'design'].includes(node.id)
+      ? { specDigest: (await checkStartApproval(change.name)).specDigest } : {}),
     startedAt: record.startedAt,
     completedAt: record.completedAt,
     artifactPath: relative.replaceAll('\\', '/'),
@@ -1971,6 +1957,8 @@ async function recordOverlayGuardSuccess(protocol, change, node, allEvidence) {
     protocolHash: currentProtocolHash(protocol),
     codeStateHash: await currentCodeStateHash(),
     draftHash: await currentBundleDraftHash(protocol),
+    ...(!['open', 'design'].includes(node.id)
+      ? { specDigest: (await checkStartApproval(change.name)).specDigest } : {}),
     receiptIds: receipts.map((receipt) => receipt.id),
     artifactSnapshots: await requiredArtifactSnapshots(protocol, node, change),
     ...(latestInvalidation ? { chainId: latestInvalidation.id } : {}),
@@ -2012,6 +2000,7 @@ async function validateAuthorizedArchive(
     throw new Error('Exactly one current unconsumed archive authorization is required.');
   }
   const authorization = currentAuthorizations[0];
+  await checkWebQa(change.name);
   if (token && authorization.id !== token) {
     throw new Error('Archive authorization token is revoked, superseded, or not current.');
   }
@@ -2024,13 +2013,13 @@ async function validateAuthorizedArchive(
   ) {
     throw new Error('Archive authorization is stale for the current code, draft, or protocol.');
   }
-  const healthReceipts = await validReceipts(protocol, node, evidence, change);
-  const healthReceipt = healthReceipts.find(
-    (receipt) =>
-      receipt.id === authorization.healthReceiptId &&
+  const healthRequired = (node.requiredSkillCalls ?? []).some((binding) => binding.skill === 'health');
+  const healthReceipts = healthRequired ? await validReceipts(protocol, node, evidence, change) : [];
+  const healthReceipt = healthRequired ? healthReceipts.find(
+    (receipt) => receipt.id === authorization.healthReceiptId &&
       receipt.reportDigest === authorization.healthReportDigest,
-  );
-  if (!healthReceipt) throw new Error('Archive health receipt is missing or stale.');
+  ) : null;
+  if (healthRequired && !healthReceipt) throw new Error('Archive health receipt is missing or stale.');
   const missingSchema = missingRequiredSchemaEvidence(
     protocol,
     node,
@@ -2624,6 +2613,7 @@ async function main() {
       throw new Error('confirm-archive is supported only for comet-five-phase-overlay.');
     }
     const change = await resolveCometOverlayChange();
+    await checkStartApproval(change.name);
     const evidence = await readOverlayEvidence(protocol, change);
     let validated;
     try {
@@ -2734,6 +2724,15 @@ async function main() {
       throw new Error('receipt is currently supported only for comet-five-phase-overlay.');
     }
     const change = await resolveCometOverlayChange();
+    if (node.id !== 'design' && node.id !== 'open') await checkStartApproval(change.name);
+    if (node.id === 'review') {
+      const evidence = await readOverlayEvidence(protocol, change);
+      const prior = (await validReceipts(protocol, node, evidence, change)).find((item) => item.skill === skill);
+      if (prior) {
+        console.log('RECEIPT REUSED: ' + prior.id);
+        return;
+      }
+    }
     const receipt = await mintOverlayReceipt(protocol, change, node, skill, artifactPath);
     if (receipt.remediated) {
       const refreshedEvidence = await readOverlayEvidence(protocol, change);
@@ -2782,6 +2781,7 @@ async function main() {
       );
     }
     const change = await resolveCometOverlayChange();
+    await checkStartApproval(change.name);
     const transaction = await acquireArchiveTransaction(
       protocol,
       change,
@@ -2825,14 +2825,14 @@ async function main() {
           'Archive authorization is stale because code state, Bundle draft, or protocol changed.',
         );
       }
-      const healthReceipt = ledger.receipts.find(
+      const healthRequired = (node.requiredSkillCalls ?? []).some((binding) => binding.skill === 'health');
+      const healthReceipt = healthRequired ? ledger.receipts.find(
         (receipt) => receipt.id === authorization.healthReceiptId,
-      );
-      if (
-        !healthReceipt ||
-        healthReceipt.reportDigest !== authorization.healthReportDigest ||
+      ) : null;
+      if (healthRequired && (
+        !healthReceipt || healthReceipt.reportDigest !== authorization.healthReportDigest ||
         !(await receiptArtifactMatches(healthReceipt))
-      ) {
+      )) {
         throw archiveQualityPreflightFailure(
           'Archive authorization health receipt or report digest is no longer valid.',
         );
@@ -2868,8 +2868,8 @@ async function main() {
             currentArtifacts.join(', '),
         );
       }
-      const currentReceipts = await validReceipts(protocol, node, evidence, change);
-      if (!currentReceipts.some((receipt) => receipt.id === healthReceipt.id)) {
+      const currentReceipts = healthRequired ? await validReceipts(protocol, node, evidence, change) : [];
+      if (healthRequired && !currentReceipts.some((receipt) => receipt.id === healthReceipt.id)) {
         throw archiveQualityPreflightFailure(
           'Archive authorization health receipt is no longer current and valid.',
         );
@@ -2888,7 +2888,7 @@ async function main() {
         );
       }
       const startedAt = new Date().toISOString();
-      if (Date.parse(healthReceipt.mintedAt) > Date.parse(startedAt)) {
+      if (healthRequired && Date.parse(healthReceipt.mintedAt) > Date.parse(startedAt)) {
         throw archiveQualityPreflightFailure(
           'Health receipt must be minted before archive starts.',
         );
@@ -2914,16 +2914,18 @@ async function main() {
         actionId,
         codeStateHash,
         draftHash,
-        healthReceiptId: healthReceipt.id,
-        healthReportDigest: healthReceipt.reportDigest,
+        ...(healthReceipt ? { healthReceiptId: healthReceipt.id,
+          healthReportDigest: healthReceipt.reportDigest } : {}),
         preparedAt: startedAt,
       });
       transaction.transaction.status = 'prepared';
       transaction.transaction.preparedAt = startedAt;
       transaction.transaction.codeStateHash = codeStateHash;
       transaction.transaction.draftHash = draftHash;
-      transaction.transaction.healthReceiptId = healthReceipt.id;
-      transaction.transaction.healthReportDigest = healthReceipt.reportDigest;
+      if (healthReceipt) {
+        transaction.transaction.healthReceiptId = healthReceipt.id;
+        transaction.transaction.healthReportDigest = healthReceipt.reportDigest;
+      }
       await writeJsonAtomic(transaction.file, transaction.transaction);
       console.log('ARCHIVE PREPARED');
       console.log('AUTHORIZATION: ' + authorization.id);
@@ -3124,6 +3126,7 @@ async function main() {
   }
   if (isCometOverlay(protocol)) {
     const change = await resolveCometOverlayChange();
+    if (node.id !== 'open' && node.id !== 'design') await checkStartApproval(change.name);
     const overlayEvidence = await readOverlayEvidence(protocol, change);
     const pendingRemediation =
       [...overlayLedger(overlayEvidence).invalidations]
@@ -3268,21 +3271,25 @@ async function main() {
     if (await blockOnSemanticFailures(protocol, node, evidence, evidenceState.evidence, change)) {
       process.exit(1);
     }
+    if (node.id === 'review' && evidenceValue(evidence, 'review-spec-digest', evidenceState.evidence) !==
+      (await checkStartApproval(change.name)).specDigest) {
+      await blockOverlay(protocol, change, node, 'BLOCKED: review is bound to an old spec digest.');
+      process.exit(1);
+    }
+    if (node.id === 'review') await checkSecondReview(change.name);
+    if (node.id === 'verify' || node.id === 'archive') await checkWebQa(change.name);
     if (command === 'authorize') {
       const ledger = overlayLedger(evidenceState.evidence);
-      const healthReceipt = [...(await validReceipts(protocol, node, overlayEvidence, change))]
-        .reverse()
-        .find(
-          (receipt) =>
-            receipt.check === 'required-skill:' + node.id + '.health',
-        );
-      if (!healthReceipt) {
+      const healthRequired = (node.requiredSkillCalls ?? []).some((binding) => binding.skill === 'health');
+      const healthReceipt = healthRequired ? [...(await validReceipts(protocol, node, overlayEvidence, change))]
+        .reverse().find((receipt) => receipt.check === 'required-skill:' + node.id + '.health') : null;
+      if (healthRequired && !healthReceipt) {
         await blockOverlay(protocol, change, node, 'BLOCKED: archive authorization requires a valid current health receipt.');
         process.exit(1);
       }
       const codeStateHash = await currentCodeStateHash();
       const draftHash = await currentBundleDraftHash(protocol);
-      if (healthReceipt.codeStateHash !== codeStateHash || healthReceipt.draftHash !== draftHash) {
+      if (healthRequired && (healthReceipt.codeStateHash !== codeStateHash || healthReceipt.draftHash !== draftHash)) {
         await blockOverlay(
           protocol,
           change,
@@ -3337,8 +3344,8 @@ async function main() {
             protocol.name,
             change.name,
             protocolHash,
-            healthReceipt.id,
-            healthReceipt.reportDigest,
+            healthReceipt?.id ?? '',
+            healthReceipt?.reportDigest ?? '',
             codeStateHash,
             draftHash,
             verifyAuthorization?.guardResultId ?? '',
@@ -3383,8 +3390,8 @@ async function main() {
         fingerprint: authorizationFingerprint,
         node: node.id,
         change: change.name,
-        healthReceiptId: healthReceipt.id,
-        healthReportDigest: healthReceipt.reportDigest,
+        ...(healthReceipt ? { healthReceiptId: healthReceipt.id,
+          healthReportDigest: healthReceipt.reportDigest } : {}),
         protocolHash,
         codeStateHash,
         draftHash,
@@ -3406,7 +3413,7 @@ async function main() {
       await writeOverlayEvidence(protocol, change, evidenceState.evidence);
       console.log('ARCHIVE AUTHORIZED');
       console.log('AUTHORIZATION: ' + authorization.id);
-      console.log('HEALTH RECEIPT: ' + healthReceipt.id);
+      if (healthReceipt) console.log('HEALTH RECEIPT: ' + healthReceipt.id);
       return;
     }
     if (node.id === 'archive') {

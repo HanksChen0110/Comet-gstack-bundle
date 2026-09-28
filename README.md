@@ -2,7 +2,7 @@
 
 我把 gstack 的几道质量检查接进了 Comet Classic。Comet 继续管理 change、阶段和归档，这个 Bundle 负责在几个容易被省略的节点上卡住流程，直到证据齐全。
 
-这套改造目前用在 Claude Code 和 Codex，基于 Comet `0.4.0-beta.9` 生成。
+这套 Bundle 最初基于 Comet `0.4.0-beta.9` 生成；当前优化版仍在项目级试点，尚未同步到 Claude Code 和 Codex 的全局注册层。
 
 ## 改了什么
 
@@ -17,23 +17,17 @@ Comet Classic 的状态机和节点 implementation 都保留。Bundle 只增加�
 | Node | Required Skill | 约束 |
 |---|---|---|
 | `design` | `autoplan` | 记录 CEO、engineering、design、DX 四个视角的审查结果 |
-| `execute` | `review` | 每个实现段都要有独立 review 证据 |
+| `execute` | `review` | 对当前完整 diff 审查一次，已有同摘要通过证据可复用 |
 | `subagent-execute` | `review` | 子代理回传前完成 handoff review |
-| `review` | `codex` | 运行一次 Codex 对抗审查 |
-| `verify` | `verification-gate` → `qa` | 调用顺序固定，两项证据绑定当前代码和 draft |
-| `archive` | `health` | 归档前记录复合评分和跨 change 趋势 |
+| `review` | `requesting-code-review` | 对当前完整 diff 做一次正式审查；高风险才做独立第二审 |
+| `verify` | `verification-gate`，网页任务按需只读 QA | 只验证已批准场景；文档任务不运行网页 QA |
+| `archive` | 归档前检查 | 核对当前规格、代码及验证证据；`health` 非默认必需 |
 
-## verify 为什么管得比较严
+## 开工与验证限额
 
-`verify` 的执行顺序固定：
+实现前对当前 OpenSpec 规格、适用规则、验收场景和整次预算确认一次；节点推进和换会话恢复只校验原确认，不重复找用户。新 change 默认总预算为 4 小时、最多 1 轮实现返工、单条测试命令 10 分钟；已确认的旧 change 沿用原预算。只有目标、范围、规则或验收场景实质变化，或预算实际耗尽，才重新确认；证据格式和 CLI 调用问题由 Agent 自行纠正。build 只跑受影响的检查；verify 按已批准场景验证。网页 QA 只读报告问题，定向修复由实现阶段完成。同一规格和代码摘要下的通过证据不重复运行。
 
-```text
-verification-gate → qa
-```
-
-QA 只要改了代码、产生新提交，或者发现还要修的问题，旧 verify 证据就会失效。流程退回 `execute/review`，修完并审查后重新跑一遍 `verification-gate → qa`。旧 draft hash、倒序调用和过期代码证据也会被 Guard 拦住。
-
-归档前还要再跑 `health`。评分、分项结果、趋势和当前代码 hash 都记录成功后，才进入原来的 `comet-archive` 流程。
+活跃 change 的直接文件写工具在 plan 及后续节点也检查开工确认；open/design 仍能编写规格。Shell 等意图不明的工具依赖节点守卫和 `run-check`，不能把 Hook 当作任意命令的写入沙箱。
 
 ## 仓库结构
 
@@ -46,6 +40,9 @@ QA 只要改了代码、产生新提交，或者发现还要修的问题，旧 v
 │  │  └─ comet-gstack-quality-gates/
 │  └─ bundles/
 │     └─ comet-gstack-quality-gates/
+├─ scripts/
+│  ├─ bundle-eval-handoff.mjs
+│  └─ run-subscription-eval.mjs
 ├─ patches/
 │  ├─ comet-0.4.0-beta.9-global-hook-path.patch
 │  └─ comet-gstack-global-no-active-hook.patch
@@ -54,7 +51,7 @@ QA 只要改了代码、产生新提交，或者发现还要修的问题，旧 v
 └─ README.md
 ```
 
-`.comet/bundles/comet-gstack-quality-gates/` 是已批准的 Bundle。`bundle-authoring` 只保留分发所需的 ready 状态，`bundle-drafts` 保存同一 hash 的 draft。仓库保留这些路径，是为了让 Comet CLI 继续执行原生 hash 校验和分发流程。
+`.comet/bundles/comet-gstack-quality-gates/` 是待重新评估的 Bundle 真源；当前 `bundle-authoring` 为 `drift-conflict`，不能据此分发。`bundle-drafts` 保存同内容的评测 draft。`scripts/` 只服务维护流程，交接结果写入被 Git 忽略的 `.comet/eval-handoffs/`。
 
 ## 安装前准备
 
@@ -88,11 +85,35 @@ node .comet/bundles/comet-gstack-quality-gates/skills/comet-gstack-quality-gates
 workflow-contract-ok
 ```
 
-## 全局安装前的兼容补丁
+## 交给其他 Agent 评测
+
+在真源目录执行一条命令，由脚本准备快照、调用本机订阅登录的 Claude CLI 只读评测、写入报告并校验：
+
+```powershell
+node scripts/run-subscription-eval.mjs
+```
+
+脚本先核对 Bundle 真源与 draft 一致，并把 draft 复制到被忽略的隔离目录；Agent 只获得 Read 工具，单次评测上限 45 分钟和 CLI 报价 1 美元。结果、实际模型、用量、报告摘要和 `verified.json` 自动保存在同一交接目录；已通过的同快照外部评审直接复用。可用 `--dry-run` 只检查路径和快照。本机 Claude CLI 的实际模型由登录账号配置决定，运行结果会记录；CLI 不可用或证据不足时结果为 `blocked`，不由用户手工搬运文件。该路径不是 Comet 官方 eval。
+
+若评测环境有 Comet 支持的 API 凭据，可以先用新版 Comet 的 `--collect` 检查任务与配置，再在 45 分钟预算内运行正式评测。填写 `mode: comet-eval`，把未经修改的 `repository-eval-result.json` 放在交接目录，并在 `officialResult.path` 和 `officialResult.sha256` 引用它。Comet `0.4.3` 实测不会使用 Codex 的订阅登录完成正式 eval；认证缺失、样本全跳过或工具故障时填写 `blocked`，不可填写 `passed`。密钥不得写进交接文件。
+
+需要手动接收其他 Agent 的结果时仍可运行底层校验：
+
+```powershell
+node scripts/bundle-eval-handoff.mjs verify --project . --request <request.json路径> --result <result.json路径>
+```
+
+校验会检查请求版本、Bundle 与 manifest 摘要，以及评审报告或 Comet 结果的文件摘要，并写出 `verified.json`。`external-agent` 即使评审通过也只记为试点证据，`eligibleForCometRecord` 仍是 `false`；本轮保持 Comet 原生 ready 阻塞。最终是否达到 `ready` 仍由 Comet 原生 eval、review 和当前 hash 检查决定。变更 Bundle 后要重新生成请求。
+
+当前快照请求 `060e93cfc0403788ef829ac3` 已由本机订阅 Agent 自动评审并通过六项场景的结果校验；试点报告已冻结为带 SHA-256 的副本。Agent 未运行测试，命令结果引用本地试点的历史记录。相同快照再次运行会复用该结果。authoring 仍为 `drift-conflict`，原生 `ready` 仍阻塞。
+
+当前 manifest 已把 Comet `0.4.3` 不支持的 `workflow-semantic-negative` 替换为该版本提供的 `workflow-route-conformance`。本地负向测试继续覆盖开工确认、漂移和预算；`--collect` 只验证任务可发现，正式评分仍需支持的 API 凭据。
+
+## 旧版兼容补丁（仅 `0.4.0-beta.9`）
 
 Comet `0.4.0-beta.9` 在 global scope 下会生成 `.claude/...` 或 `.agents/...` 相对 Hook 路径。换到其他工作区后，Node 找不到脚本。
 
-当前版本需要先给本机 Comet 包应用补丁。只做 project scope 安装时可以跳过这一步。
+下面仅记录旧版 `0.4.0-beta.9` 的历史补丁办法；尚未验证它是否适用于 Comet `0.4.3`，不得照搬到新版。本轮只做隔离项目试点，不修改本机全局安装。
 
 ```powershell
 $repoRoot = (Get-Location).Path

@@ -5,6 +5,8 @@ description: "仅在 /comet-gstack-quality-gates-open 被显式调用或由 come
 
 # Open
 
+本节点先澄清目标、非目标、规则来源、关键未知项和可验收场景；每项标记已确认、推断或待用户决定。规则冲突与影响实现的未知项未解决时不得推进。按 `../comet-gstack-quality-gates/reference/start-approval.md` 准备开工确认，但当前 OpenSpec 产物尚未定稿时不能提前批准摘要。
+
 ## 节点目标
 
 完成 `comet-gstack-quality-gates` 的 `open` 节点。
@@ -88,4 +90,3 @@ node comet-gstack-quality-gates/scripts/workflow-guard.mjs exit open --apply
 ## 恢复
 
 依次运行 `node comet-gstack-quality-gates/scripts/workflow-state.mjs status` 与 `node comet-gstack-quality-gates/scripts/workflow-state.mjs next`。若 remediation 正在执行或可重试，按输出的 `RETRY`、`NODE`、`SKILL` 唯一路径继续；实际重试命令是 `node comet-gstack-quality-gates/scripts/workflow-guard.mjs retry-remediation <from>`。原 Classic `.comet.yaml` 是唯一控制状态。
-
